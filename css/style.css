@@ -1,0 +1,78 @@
+:root {
+    --bg-dark: #0f0f13; /* Mais escuro para contraste */
+    --bg-card: #18181b;
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
+    
+    --primary: #bc13fe;
+    --primary-glow: rgba(188, 19, 254, 0.4);
+    --secondary: #00ff41;
+    --danger: #ff4444;
+    
+    --glass-bg: rgba(30, 30, 35, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --blur: 16px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    /* Background abstrato gamer */
+    background-image: 
+        radial-gradient(circle at 5% 10%, rgba(188, 19, 254, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 95% 90%, rgba(0, 255, 65, 0.06) 0%, transparent 40%);
+    overflow-x: hidden;
+}
+
+.app-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    padding-bottom: 6rem; /* Espaço para o FAB */
+}
+
+/* Header & KPIs */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+}
+
+.logo-area h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+}
+.highlight { color: var(--primary); text-shadow: 0 0 15px var(--primary-glow); }
+.subtitle { color: var(--text-muted); font-size: 0.85rem; letter-spacing: 3px; text-transform: uppercase; }
+
+.kpi-grid { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.kpi-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.0) 100%);
+    border: 1px solid var(--glass-border);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    min-width: 150px;
+}
+.kpi-label { font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem; }
+.kpi-value { font-size: 1.4rem; font-weight: 700; }
+.profit { color: var(--secondary); text-shadow: 0 0 8px rgba(0,255,65,0.2); }
+
+/* Scrollbar Bonita */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-dark); }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+@media (max-width: 768px) {
+    .dashboard-header { flex-direction: column; align-items: flex-start; }
+    .kpi-grid { width: 100%; }
+    .kpi-card { flex: 1; }
+}

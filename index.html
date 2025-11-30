@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Collection Dashboard Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+
+    <div class="app-container">
+        <header class="dashboard-header">
+            <div class="logo-area">
+                <h1>MY<span class="highlight">COLLECTION</span></h1>
+                <p class="subtitle">Ultimate Manager</p>
+            </div>
+            <div class="kpi-grid" id="kpi-container">
+                </div>
+        </header>
+
+        <section class="controls-section glass-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="collection">Minha Coleção</button>
+                <button class="tab-btn" data-tab="sold">Histórico de Vendas</button>
+            </div>
+
+            <div class="filters">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Buscar jogo...">
+                    <span class="search-icon">🔍</span>
+                </div>
+                <select id="platformFilter" class="platform-select">
+                    <option value="all">Todas as Plataformas</option>
+                </select>
+            </div>
+        </section>
+
+        <main class="games-grid" id="gamesContainer">
+            </main>
+    </div>
+
+    <button class="fab-btn" id="btnAddGame" title="Adicionar Novo Jogo">+</button>
+
+    <div class="modal-overlay hidden" id="gameModal">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2 id="modalTitle">Novo Jogo</h2>
+                <button class="close-modal" id="btnCloseModal">&times;</button>
+            </div>
+            <form id="gameForm">
+                <input type="hidden" id="gameId">
+                
+                <div class="form-group">
+                    <label>Nome do Jogo *</label>
+                    <input type="text" id="inputName" required placeholder="Ex: God of War">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Plataforma *</label>
+                        <select id="inputPlatform" required>
+                            <option value="Nintendo Switch">Nintendo Switch</option>
+                            <option value="Playstation 5">Playstation 5</option>
+                            <option value="Playstation 4">Playstation 4</option>
+                            <option value="Playstation 3">Playstation 3</option>
+                            <option value="Playstation 2">Playstation 2</option>
+                            <option value="Xbox Series S/X">Xbox Series S/X</option>
+                            <option value="PC">PC</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="inputType">
+                            <option value="Jogo">Jogo</option>
+                            <option value="Console">Console</option>
+                            <option value="Acessório">Acessório</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Preço Pago (R$)</label>
+                        <input type="number" step="0.01" id="inputPrice" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="inputStatus">
+                            <option value="Coleção">Na Coleção</option>
+                            <option value="À venda">À venda</option>
+                            <option value="Importado">Importado/Trânsito</option>
+                            <option value="Vendido">Vendido</option>
+                            <option value="Desejo">Lista de Desejos</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row hidden" id="soldFields">
+                    <div class="form-group">
+                        <label>Valor de Venda (R$)</label>
+                        <input type="number" step="0.01" id="inputSoldPrice" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>URL da Imagem da Capa</label>
+                    <input type="url" id="inputImage" placeholder="https://...">
+                    <small style="color:var(--text-muted); font-size: 0.7rem;">Cole o link de uma imagem (JPG/PNG)</small>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="btnCancel">Cancelar</button>
+                    <button type="submit" class="btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
