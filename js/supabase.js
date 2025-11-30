@@ -19,27 +19,36 @@ export const Auth = {
 
 export const DB = {
     getGames: async () => {
-        try {
-            const { data, error } = await supabase
-                .from('games')
-                .select('*')
-                .order('created_at', { ascending: false });
-            
-            if (error) {
-                console.error("Erro Supabase:", error.message);
-                throw error;
-            }
-            return data || [];
-        } catch (err) {
-            console.error("Falha crítica ao buscar jogos:", err);
-            return []; // Retorna array vazio para não travar o loop
+        // Tenta pegar a sessão atual para garantir
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+            console.error("❌ ERRO: Usuário não está autenticado no momento da busca.");
+            throw new Error("Usuário não logado.");
         }
+
+        const { data, error } = await supabase
+            .from('games')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            // AQUI ESTÁ O SEGREDO: Logar o erro detalhado
+            console.error("🔥 ERRO SUPABASE (Detalhes):", error);
+            console.error("Mensagem:", error.message);
+            console.error("Dica:", error.hint);
+            throw error;
+        }
+        return data || [];
     },
     
     addGame: async (gameData, userId) => {
         const payload = sanitizeGameData(gameData, userId);
         const { data, error } = await supabase.from('games').insert([payload]).select();
-        if (error) throw error;
+        if (error) {
+            console.error("Erro ao Adicionar:", error);
+            throw error;
+        }
         return data;
     },
 
@@ -47,13 +56,19 @@ export const DB = {
         const payload = sanitizeGameData(gameData);
         delete payload.user_id; 
         const { data, error } = await supabase.from('games').update(payload).eq('id', id).select();
-        if (error) throw error;
+        if (error) {
+            console.error("Erro ao Atualizar:", error);
+            throw error;
+        }
         return data;
     },
 
     deleteGame: async (id) => {
         const { error } = await supabase.from('games').delete().eq('id', id);
-        if (error) throw error;
+        if (error) {
+            console.error("Erro ao Deletar:", error);
+            throw error;
+        }
         return true;
     }
 };
