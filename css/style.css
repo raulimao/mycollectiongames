@@ -106,3 +106,34 @@ body {
 
 .modal-actions { display: flex; justify-content: space-between; margin-top: 20px; }
 .btn-danger { background: #ff4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+
+/* Spinner de Carregamento */
+.spinner {
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    width: 36px; height: 36px; border-radius: 50%;
+    border-left-color: var(--primary);
+    animation: spin 1s linear infinite;
+    margin: 2rem auto;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* Sistema de Notificação (Toast) */
+.toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+}
+.toast {
+    background: #18181b; border: 1px solid #333; color: white;
+    padding: 12px 20px; border-radius: 8px; min-width: 250px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    animation: slideIn 0.3s ease-out;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.toast.success { border-left: 4px solid #00ff41; }
+.toast.error { border-left: 4px solid #ff4444; }
+
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Ajuste no Modal Actions */
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.btn-danger { margin-right: auto; background: #ff4444; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer;}
