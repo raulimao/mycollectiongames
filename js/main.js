@@ -4,88 +4,135 @@ import { renderKPIs, renderGrid, populateFilters } from './ui.js';
 // --- Estado da Aplicação ---
 const state = {
     user: null,
-    games: [],     // Dados crus do Banco
-    currentTab: 'collection',
+    games: [],
+    currentTab: 'collection', // 'collection' ou 'sold'
     search: '',
     platformFilter: 'all'
 };
 
-// --- DOM Elements ---
-const loginOverlay = document.getElementById('loginOverlay');
-const appContainer = document.getElementById('appContainer');
-const loginForm = document.getElementById('loginForm');
-const userEmailDisplay = document.getElementById('userEmailDisplay');
+// --- Elementos do DOM (Cache) ---
+const DOM = {
+    loginOverlay: document.getElementById('loginOverlay'),
+    appContainer: document.getElementById('appContainer'),
+    loginForm: document.getElementById('loginForm'),
+    userEmailDisplay: document.getElementById('userEmailDisplay'),
+    btnLogout: document.getElementById('btnLogout'),
+    kpiContainer: document.getElementById('kpi-container'),
+    gamesContainer: document.getElementById('gamesContainer'),
+    searchInput: document.getElementById('searchInput'),
+    platformSelect: document.getElementById('platformSelect'),
+    tabs: document.querySelectorAll('.tab-btn'),
+    btnNewGame: document.getElementById('btnNewGame')
+};
 
-// --- Autenticação e Inicialização ---
-const init = () => {
-    // Ouve mudanças de Login/Logout
+// --- Inicialização ---
+const init = async () => {
+    console.log("Inicializando GameVault...");
+
+    // 1. Verificação imediata de Hash na URL (Correção para Mobile)
+    // Se a URL tiver '#access_token', significa que o usuário clicou no Magic Link.
+    // Não devemos mostrar o formulário de login vazio, e sim um "Loading".
+    const isReturningFromEmail = window.location.hash.includes('access_token') || window.location.hash.includes('error=');
+    
+    if (isReturningFromEmail) {
+        console.log("Detectado retorno de Magic Link. Processando...");
+        if(DOM.loginOverlay) {
+             DOM.loginOverlay.classList.remove('hidden');
+             // Esconde o form e mostra mensagem
+             DOM.loginForm.classList.add('hidden');
+             const msg = document.getElementById('loginMessage');
+             if(msg) {
+                 msg.innerText = "Autenticando e descriptografando Vault...";
+                 msg.style.color = "var(--primary)";
+             }
+        }
+    }
+
+    // 2. Listener de Estado de Autenticação
     Auth.onStateChange(async (user) => {
         state.user = user;
         
         if (user) {
-            // USUÁRIO LOGADO
-            console.log("Usuário autenticado:", user.email);
-            userEmailDisplay.innerText = user.email;
+            // --- USUÁRIO LOGADO ---
+            console.log("Login Confirmado:", user.email);
+            if(DOM.userEmailDisplay) DOM.userEmailDisplay.innerText = user.email;
             
-            // 1. Esconde Login, Mostra App
-            loginOverlay.classList.add('hidden');
-            appContainer.classList.remove('hidden');
+            // Remove Login
+            DOM.loginOverlay.classList.add('hidden');
+            DOM.appContainer.classList.remove('hidden');
 
-            // 2. Busca dados REAIS do Supabase
+            // Restaura o form de login (para caso de logout futuro)
+            DOM.loginForm.classList.remove('hidden');
+            document.getElementById('loginMessage').innerText = "";
+
+            // Carrega dados
             await loadUserLibrary();
+            
+            // Limpa a URL (remove o token gigante) sem recarregar a página
+            if (isReturningFromEmail) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
 
         } else {
-            // USUÁRIO DESLOGADO
-            loginOverlay.classList.remove('hidden');
-            appContainer.classList.add('hidden');
+            // --- USUÁRIO DESLOGADO ---
+            console.log("Sem usuário ativo.");
+            
+            // Só mostra a tela de login se NÃO estivermos no meio do processamento do token
+            // Isso evita o "flash" do formulário de login antes do Supabase validar o token
+            if (!isReturningFromEmail) { 
+                DOM.loginOverlay.classList.remove('hidden');
+                DOM.loginForm.classList.remove('hidden');
+                DOM.appContainer.classList.add('hidden');
+            }
         }
     });
-
+    
     setupEventListeners();
 };
 
-// --- Carregamento de Dados (Core do SaaS) ---
+// --- Carregamento de Dados ---
 const loadUserLibrary = async () => {
-    // Mostra loading se quiser...
-    const data = await DB.getGames();
-    state.games = data || []; // Garante array mesmo se null
-
-    // Atualiza toda a interface
+    DOM.gamesContainer.innerHTML = '<div class="spinner" style="margin-top:50px"></div>'; // Loading feedback
+    
+    console.log("📥 Buscando jogos no Supabase...");
+    const data = await DB.getGames(); // Chama o supabase.js
+    
+    state.games = data || [];
     refreshApp();
 };
 
-// --- Lógica de UI Centralizada ---
+// --- Lógica de UI (Renderização) ---
 const refreshApp = () => {
-    // 1. Filtra os dados com base no Estado Atual
+    // 1. Filtragem dos dados locais
     const filtered = filterGames();
 
-    // 2. Renderiza KPIs (Com base em TUDO ou Filtro? Geralmente TUDO do usuário)
-    // Separa coleção de vendidos para as KPIs
+    // 2. KPIs (Sempre baseados no total do usuário, independente do filtro de busca)
     const collectionItems = state.games.filter(g => g.status !== 'Vendido');
     const soldItems = state.games.filter(g => g.status === 'Vendido');
     renderKPIs(collectionItems, soldItems);
 
-    // 3. Atualiza Filtros (Dropdown)
+    // 3. Atualiza Dropdown de Filtros (apenas se for a primeira carga ou se quiser dinâmico)
     populateFilters(state.games);
 
-    // 4. Renderiza Grid
-    // Verifica se é um usuário NOVO (sem dados)
+    // 4. Renderização do Grid
     if (state.games.length === 0) {
-        document.getElementById('gamesContainer').innerHTML = `
-            <div style="grid-column: 1/-1; text-align: center; padding: 5rem; border: 1px dashed #333; border-radius: 20px;">
-                <h2 style="margin-bottom:10px;">Seu Vault está Vazio</h2>
-                <p style="color:#888; margin-bottom:20px;">Comece a rastrear sua coleção agora.</p>
-                <button class="btn-primary" onclick="alert('Função de adicionar em breve!')">Adicionar Primeiro Jogo</button>
+        // Empty State (Vault Vazio)
+        DOM.gamesContainer.innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; padding: 4rem; border: 1px dashed #333; border-radius: 20px; background: rgba(0,0,0,0.2);">
+                <h2 style="font-family:'Orbitron'; margin-bottom:10px; color: var(--text-muted);">VAULT VAZIO</h2>
+                <p style="color:#666; margin-bottom:20px;">Você ainda não adicionou nenhum jogo à sua coleção.</p>
+                <button class="btn-primary" onclick="alert('Funcionalidade de Adicionar Jogo será implementada a seguir!')">
+                    + ADICIONAR PRIMEIRO JOGO
+                </button>
             </div>
         `;
-        return;
+    } else {
+        renderGrid(filtered, state.currentTab === 'sold');
     }
-    
-    renderGrid(filtered, state.currentTab === 'sold');
 };
 
 const filterGames = () => {
-    // Define qual grupo mostrar (Coleção ou Vendidos)
+    // Seleciona fonte baseada na aba ativa
     let source = [];
     if (state.currentTab === 'collection') {
         source = state.games.filter(g => g.status !== 'Vendido');
@@ -93,67 +140,109 @@ const filterGames = () => {
         source = state.games.filter(g => g.status === 'Vendido');
     }
 
-    // Aplica filtros de texto e plataforma
     return source.filter(item => {
-        const matchText = item.nome?.toLowerCase().includes(state.search.toLowerCase()) || 
-                          item.jogo?.toLowerCase().includes(state.search.toLowerCase()); // Suporte a campos legados
+        // Tratamento seguro para campos que podem vir nulos do banco
+        const nomeJogo = item.jogo || item.nome || ''; // Suporte a legado
+        
+        // Filtro de Texto
+        const matchText = nomeJogo.toLowerCase().includes(state.search.toLowerCase());
+        
+        // Filtro de Plataforma
         const matchPlat = state.platformFilter === 'all' || item.plataforma === state.platformFilter;
+        
         return matchText && matchPlat;
     });
 };
 
 // --- Event Listeners ---
 const setupEventListeners = () => {
-    // Login
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('emailInput').value;
-        const btn = loginForm.querySelector('button');
-        const msg = document.getElementById('loginMessage');
-        
-        btn.disabled = true;
-        btn.querySelector('#btnText').classList.add('hidden');
-        btn.querySelector('#loader').classList.remove('hidden');
+    // 1. Formulário de Login
+    if (DOM.loginForm) {
+        DOM.loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const emailInput = document.getElementById('emailInput');
+            const email = emailInput.value;
+            const btn = DOM.loginForm.querySelector('button');
+            const msg = document.getElementById('loginMessage');
+            const btnText = document.getElementById('btnText');
+            const loader = document.getElementById('loader');
+            
+            // Estado de Loading UI
+            btn.disabled = true;
+            if(btnText) btnText.classList.add('hidden');
+            if(loader) loader.classList.remove('hidden');
+            msg.innerText = "";
 
-        const { error } = await Auth.signIn(email);
-        
-        btn.disabled = false;
-        btn.querySelector('#btnText').classList.remove('hidden');
-        btn.querySelector('#loader').classList.add('hidden');
+            try {
+                // Chama login no Supabase
+                const { error } = await Auth.signIn(email);
+                
+                if (error) {
+                    msg.innerText = "Erro: " + error.message;
+                    msg.style.color = "#ff4444";
+                } else {
+                    msg.innerHTML = "✨ Link enviado!<br>Verifique seu e-mail (inclusive SPAM).";
+                    msg.style.color = "var(--success)";
+                    emailInput.value = ""; // Limpa campo
+                }
+            } catch (err) {
+                msg.innerText = "Erro inesperado. Tente novamente.";
+            } finally {
+                // Restaura UI
+                btn.disabled = false;
+                if(btnText) btnText.classList.remove('hidden');
+                if(loader) loader.classList.add('hidden');
+            }
+        });
+    }
 
-        if (error) {
-            msg.innerText = "Erro: " + error.message;
-            msg.style.color = "red";
-        } else {
-            msg.innerText = "Link mágico enviado! Verifique seu e-mail.";
-            msg.style.color = "var(--success)";
-        }
-    });
+    // 2. Logout
+    if (DOM.btnLogout) {
+        DOM.btnLogout.addEventListener('click', () => {
+            if(confirm("Deseja sair do Vault?")) {
+                Auth.signOut();
+            }
+        });
+    }
 
-    // Logout
-    document.getElementById('btnLogout').addEventListener('click', Auth.signOut);
-
-    // Abas
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    // 3. Abas (Coleção vs Vendidos)
+    DOM.tabs.forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            // UI Update
+            DOM.tabs.forEach(t => t.classList.remove('active'));
             e.target.classList.add('active');
+            
+            // Logic Update
             state.currentTab = e.target.dataset.tab;
             refreshApp();
         });
     });
 
-    // Filtros
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        state.search = e.target.value;
-        refreshApp();
-    });
-    
-    document.getElementById('platformSelect').addEventListener('change', (e) => {
-        state.platformFilter = e.target.value;
-        refreshApp();
-    });
+    // 4. Busca (Search)
+    if (DOM.searchInput) {
+        DOM.searchInput.addEventListener('input', (e) => {
+            state.search = e.target.value;
+            refreshApp();
+        });
+    }
+
+    // 5. Filtro de Plataforma
+    if (DOM.platformSelect) {
+        DOM.platformSelect.addEventListener('change', (e) => {
+            state.platformFilter = e.target.value;
+            refreshApp();
+        });
+    }
+
+    // 6. Botão Novo Jogo (Placeholder)
+    if (DOM.btnNewGame) {
+        DOM.btnNewGame.addEventListener('click', () => {
+            alert("O Modal de Adicionar Jogo será reativado na próxima etapa do desenvolvimento!");
+            // openModal(); // Futura implementação
+        });
+    }
 };
 
-// Start
+// Inicializa quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', init);
