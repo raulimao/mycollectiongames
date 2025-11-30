@@ -1,4 +1,3 @@
-// Gerenciador de Estado (Pub/Sub Pattern)
 class Store {
     constructor() {
         this.state = this.getInitialState();
@@ -9,15 +8,13 @@ class Store {
         return {
             user: null,
             games: [],
-            filter: 'collection', // collection | backlog | sold
+            filter: 'collection',
             searchTerm: ''
         };
     }
 
     subscribe(listener) {
         this.listeners.push(listener);
-        // Opcional: Chama o listener imediatamente com o estado atual
-        // listener(this.state); 
     }
 
     notify() {
@@ -26,11 +23,9 @@ class Store {
 
     setState(newState) {
         this.state = { ...this.state, ...newState };
-        // console.log('State Updated:', this.state); // Descomente para debug
         this.notify();
     }
     
-    // Reseta o estado (útil para logout)
     reset() {
         this.state = this.getInitialState();
         this.notify();

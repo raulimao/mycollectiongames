@@ -6,20 +6,13 @@ import { renderApp, showToast, toggleModal } from './modules/ui.js';
 // --- INICIALIZAÇÃO ---
 const init = async () => {
     console.log("🚀 GameVault Pro Iniciado");
-
     appStore.subscribe(renderApp);
 
-    // Listener de Autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         const loader = document.getElementById('globalLoader');
-        
         try {
             if (session?.user) {
-                console.log("✅ Usuário logado:", session.user.email);
-                // 1. TIRA A TELA PRETA IMEDIATAMENTE
                 if (loader) loader.classList.add('hidden');
-                
-                // 2. Carrega a Interface
                 await handleUserLoggedIn(session.user);
             } else {
                 handleUserLoggedOut();
@@ -27,7 +20,7 @@ const init = async () => {
             }
         } catch (error) {
             console.error("Erro crítico:", error);
-            if (loader) loader.classList.add('hidden'); // Garante que sai do loader mesmo com erro
+            if (loader) loader.classList.add('hidden');
         }
     });
 
@@ -38,7 +31,6 @@ const handleUserLoggedIn = async (user) => {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     
-    // Header Info
     const nameEl = document.getElementById('userName');
     const imgEl = document.getElementById('userAvatar');
     const fullName = user.user_metadata?.full_name || user.email?.split('@')[0];
@@ -50,8 +42,6 @@ const handleUserLoggedIn = async (user) => {
     }
 
     appStore.setState({ user });
-    
-    // Carrega dados em background (sem travar a tela)
     loadData(); 
 };
 
@@ -62,27 +52,15 @@ const handleUserLoggedOut = () => {
 };
 
 const loadData = async () => {
-    console.log("⏳ Buscando jogos...");
     try {
         const games = await GameService.fetchGames();
-        console.log("📦 Jogos carregados:", games.length);
         appStore.setState({ games });
     } catch (err) {
-        console.error("❌ Erro ao buscar jogos:", err);
-        // Mostra erro visual para o usuário
-        showToast("Erro no Banco de Dados. Você rodou o SQL?", "error");
-        
-        // Remove mensagem de "Nenhum jogo" e põe aviso
-        const grid = document.getElementById('gamesContainer');
-        if(grid) grid.innerHTML = `<div style="text-align:center; padding:40px; color:#ff4444">
-            <i class="fa-solid fa-database fa-2x"></i><br><br>
-            Tabela 'games' não encontrada ou erro de conexão.<br>
-            Verifique o passo SQL no Supabase.
-        </div>`;
+        console.error("Erro:", err);
+        showToast("Erro ao carregar dados.", "error");
     }
 };
 
-// --- EVENTOS (Setup padrão) ---
 const setupEvents = () => {
     const safeClick = (id, fn) => {
         const el = document.getElementById(id);
@@ -118,7 +96,6 @@ const setupEvents = () => {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.oninput = (e) => appStore.setState({ searchTerm: e.target.value });
 
-    // API Search Logic
     let timeout;
     const apiResults = document.getElementById('apiResults');
     const inputGameName = document.getElementById('inputGameName');
@@ -154,7 +131,6 @@ const setupEvents = () => {
     }
 };
 
-// --- MODAIS & FORMS ---
 let editingId = null;
 window.editGame = (id) => openGameModal(id);
 
