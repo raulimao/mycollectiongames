@@ -1,9 +1,11 @@
 import { supabase } from './supabase.js';
 
-const RAWG_API_KEY = 'bf9095c524314757b15a99942a202d6b';
+// 🔴 SUBSTITUA ESTA CHAVE PELA SUA CHAVE NOVA DO RAWG.IO
+// A chave antiga foi bloqueada. Pegue uma free em: https://rawg.io/apidocs
+const RAWG_API_KEY = '03a8f74ab0684719a04c9fc1445fc46f'; 
 
 export const GameService = {
-    // Busca todos os jogos (RLS filtra por user_id no backend)
+    // Busca todos os jogos do usuário
     async fetchGames() {
         const { data, error } = await supabase
             .from('games')
@@ -14,12 +16,11 @@ export const GameService = {
         return data || [];
     },
 
+    // Adiciona novo jogo
     async addGame(gameData) {
-        // Garante usuário autenticado
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Usuário não autenticado. Faça login novamente.");
 
-        // Sanitização básica
         const payload = { 
             ...gameData, 
             user_id: user.id,
@@ -32,8 +33,8 @@ export const GameService = {
         return data[0];
     },
 
+    // Atualiza jogo
     async updateGame(id, gameData) {
-        // Sanitização básica
         const payload = {
             ...gameData,
             price_paid: parseFloat(gameData.price_paid) || 0,
@@ -44,27 +45,30 @@ export const GameService = {
         if (error) throw error;
     },
 
+    // Deleta jogo
     async deleteGame(id) {
         const { error } = await supabase.from('games').delete().eq('id', id);
         if (error) throw error;
     },
 
-    // API Pública de Jogos
+    // API Pública RAWG
     async searchRawg(query) {
         if (!query || query.length < 3) return [];
         
-        try {
-            const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
-            const res = await fetch(url);
-            
-            if (!res.ok) throw new Error(`RAWG API Error: ${res.status}`);
-            
-            const data = await res.json();
-            return data.results || [];
-        } catch (e) {
-            console.warn("Aviso na busca RAWG:", e);
-            // Retorna array vazio para não quebrar a UI
-            return [];
+        // Verifica se a chave foi configurada
+        if (RAWG_API_KEY === '03a8f74ab0684719a04c9fc1445fc46f') {
+            throw new Error("Chave de API inválida. Configure no arquivo api.js");
         }
+        
+        const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
+        const res = await fetch(url);
+        
+        if (!res.ok) {
+            // Lança o erro para o main.js mostrar o toast vermelho
+            throw new Error(`Erro API RAWG: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        return data.results || [];
     }
 };
