@@ -7,20 +7,15 @@ import { renderApp, showToast, toggleModal } from './modules/ui.js';
 const init = async () => {
     console.log("🚀 GameVault Pro Iniciado");
 
-    // 1. Subscribe UI
     appStore.subscribe(renderApp);
 
-    // 2. Listener Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         const loader = document.getElementById('globalLoader');
-        
         if (session?.user) {
             await handleUserLoggedIn(session.user);
         } else {
             handleUserLoggedOut();
         }
-        
-        // Remove Loader apenas após processar o estado
         if (loader) loader.classList.add('hidden');
     });
 
@@ -31,7 +26,6 @@ const handleUserLoggedIn = async (user) => {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     
-    // Header Info
     const nameEl = document.getElementById('userName');
     const imgEl = document.getElementById('userAvatar');
     
@@ -67,11 +61,11 @@ const setupEvents = () => {
     const btnGoogle = document.getElementById('btnGoogle');
     btnGoogle.onclick = async () => {
         try {
-            btnGoogle.innerHTML = '<div class="spinner" style="width:15px;height:15px;border-width:2px"></div> Conectando...';
+            btnGoogle.innerHTML = '<div class="spinner" style="width:15px;height:15px;border-width:2px"></div> ...';
             await AuthService.signInGoogle();
         } catch (e) {
             btnGoogle.innerHTML = '<i class="fa-brands fa-google"></i> Entrar com Google';
-            showToast("Erro no Login: " + e.message, "error");
+            showToast("Erro: " + e.message, "error");
         }
     };
     
@@ -80,17 +74,15 @@ const setupEvents = () => {
     // Modais
     document.getElementById('btnOpenAddModal').onclick = () => openGameModal();
     document.getElementById('btnCloseModal').onclick = () => toggleModal(false);
-    
-    // Fechar modal ao clicar fora
     document.getElementById('gameModal').onclick = (e) => {
         if (e.target.id === 'gameModal') toggleModal(false);
     };
 
-    // Formulário
+    // Form
     document.getElementById('gameForm').onsubmit = handleFormSubmit;
     document.getElementById('btnDeleteGame').onclick = handleDelete;
 
-    // Tabs
+    // Tabs & Busca Local
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -98,36 +90,47 @@ const setupEvents = () => {
             appStore.setState({ filter: e.target.dataset.tab });
         };
     });
-
-    // Busca Local
     document.getElementById('searchInput').oninput = (e) => {
         appStore.setState({ searchTerm: e.target.value });
     };
 
-    // API RAWG (Debounce)
+    // --- LÓGICA DE BUSCA API (RAWG) ---
     let timeout;
     const apiResults = document.getElementById('apiResults');
-    
-    document.getElementById('inputGameName').oninput = (e) => {
+    const inputGameName = document.getElementById('inputGameName');
+
+    inputGameName.oninput = (e) => {
         const query = e.target.value;
         
+        // 1. Limpa timeout anterior
         clearTimeout(timeout);
         
+        // 2. Se for muito curto, esconde
         if (query.length < 3) {
             apiResults.classList.add('hidden');
             return;
         }
 
+        // 3. Feedback visual imediato (UX)
+        apiResults.classList.remove('hidden');
+        apiResults.innerHTML = '<div style="padding:15px;text-align:center;color:#888"><i class="fa-solid fa-circle-notch fa-spin"></i> Digitando...</div>';
+
+        // 4. Executa busca após 600ms de pausa
         timeout = setTimeout(async () => {
-            apiResults.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Buscando...</div>';
-            apiResults.classList.remove('hidden');
+            console.log("🔍 Buscando na API:", query); // Debug
+            apiResults.innerHTML = '<div style="padding:15px;text-align:center;color:var(--primary)"><i class="fa-solid fa-circle-notch fa-spin"></i> Buscando jogos...</div>';
             
-            const results = await GameService.searchRawg(query);
-            renderApiResults(results);
+            try {
+                const results = await GameService.searchRawg(query);
+                renderApiResults(results);
+            } catch (error) {
+                console.error("Erro API:", error);
+                apiResults.innerHTML = '<div style="padding:10px;text-align:center;color:var(--danger)">Erro na busca. Tente novamente.</div>';
+            }
         }, 600);
     };
 
-    // Toggle Status Venda
+    // Toggle Status
     document.getElementById('inputStatus').onchange = (e) => {
         const group = document.getElementById('soldGroup');
         if (e.target.value === 'Vendido') group.classList.remove('hidden');
@@ -135,10 +138,8 @@ const setupEvents = () => {
     };
 };
 
-// --- LÓGICA FORMULÁRIO ---
+// --- FUNÇÕES DE FORMULÁRIO E MODAL ---
 let editingId = null;
-
-// Disponível globalmente para o onclick do HTML gerado
 window.editGame = (id) => openGameModal(id);
 
 const openGameModal = (gameId = null) => {
@@ -146,22 +147,16 @@ const openGameModal = (gameId = null) => {
     form.reset();
     editingId = gameId;
     
+    // Reseta visual da busca
     const apiContainer = document.getElementById('apiResults');
     apiContainer.classList.add('hidden');
     apiContainer.innerHTML = '';
     
     document.getElementById('soldGroup').classList.add('hidden');
     
-    // Reset Select Plataforma
+    // --- LÓGICA DE PLATAFORMA ---
     const select = document.getElementById('inputPlatform');
-    select.innerHTML = `
-        <option value="">Selecione ou Busque...</option>
-        <option value="Nintendo Switch">Nintendo Switch</option>
-        <option value="PS5">PS5</option>
-        <option value="PS4">PS4</option>
-        <option value="Xbox Series">Xbox Series</option>
-        <option value="PC">PC</option>
-    `;
+    select.innerHTML = ''; // Limpa opções antigas
 
     if (gameId) {
         // MODO EDIÇÃO
@@ -170,17 +165,13 @@ const openGameModal = (gameId = null) => {
 
         document.getElementById('modalTitle').innerText = "Editar Jogo";
         document.getElementById('btnDeleteGame').classList.remove('hidden');
-
         document.getElementById('inputGameName').value = game.title;
         
-        // Garante option da plataforma
-        const optionExists = [...select.options].some(o => o.value === game.platform);
-        if(!optionExists && game.platform) {
-            const opt = document.createElement('option');
-            opt.value = game.platform;
-            opt.innerText = game.platform;
-            select.appendChild(opt);
-        }
+        // Injeta a plataforma salva (já que não temos lista fixa)
+        const opt = document.createElement('option');
+        opt.value = game.platform;
+        opt.innerText = game.platform;
+        select.appendChild(opt);
         select.value = game.platform;
 
         document.getElementById('inputPrice').value = game.price_paid;
@@ -192,11 +183,74 @@ const openGameModal = (gameId = null) => {
             document.getElementById('inputSoldPrice').value = game.price_sold;
         }
     } else {
-        // MODO NOVO
+        // MODO NOVO JOGO
         document.getElementById('modalTitle').innerText = "Novo Jogo";
         document.getElementById('btnDeleteGame').classList.add('hidden');
+        
+        // Placeholder obrigando a busca
+        select.innerHTML = '<option value="" disabled selected>Busque o nome do jogo acima...</option>';
     }
     toggleModal(true);
+};
+
+// --- SELEÇÃO DE JOGO DA API ---
+const renderApiResults = (games) => {
+    const container = document.getElementById('apiResults');
+    container.innerHTML = '';
+    
+    if(!games || games.length === 0) {
+        container.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Nenhum jogo encontrado</div>';
+        return;
+    }
+
+    games.forEach(g => {
+        const item = document.createElement('div');
+        item.className = 'api-item';
+        const year = g.released ? g.released.split('-')[0] : 'N/A';
+        
+        item.innerHTML = `
+            <img src="${g.background_image || ''}" alt="Cover"> 
+            <div class="api-info">
+                <strong>${g.name}</strong>
+                <small>${year}</small>
+            </div>
+        `;
+        // Passa o objeto completo 'g' para a função
+        item.onclick = () => selectApiGame(g);
+        container.appendChild(item);
+    });
+};
+
+const selectApiGame = (game) => {
+    console.log("Jogo Selecionado:", game); // Debug
+    
+    // 1. Preenche Nome e Imagem
+    document.getElementById('inputGameName').value = game.name;
+    document.getElementById('inputImage').value = game.background_image || '';
+    
+    // 2. Preenchimento Dinâmico de Plataformas
+    const select = document.getElementById('inputPlatform');
+    select.innerHTML = ''; // Limpa o placeholder
+
+    if (game.platforms && game.platforms.length > 0) {
+        // A API RAWG retorna: platforms: [{ platform: { id: 1, name: "Xbox One" } }, ... ]
+        game.platforms.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.platform.name; // ex: "PlayStation 5"
+            option.innerText = p.platform.name;
+            select.appendChild(option);
+        });
+        
+        // Seleciona o primeiro automaticamente
+        select.selectedIndex = 0;
+        showToast(`Plataformas de ${game.name} carregadas!`);
+    } else {
+        // Fallback se a API não trouxer plataformas
+        select.innerHTML = '<option value="Outros">Outros / Desconhecido</option>';
+    }
+
+    // 3. Esconde lista de resultados
+    document.getElementById('apiResults').classList.add('hidden');
 };
 
 const handleFormSubmit = async (e) => {
@@ -207,9 +261,13 @@ const handleFormSubmit = async (e) => {
     btn.innerText = "Salvando...";
     btn.disabled = true;
 
+    // Se a plataforma estiver vazia (usuário não buscou), define padrão
+    let platformValue = document.getElementById('inputPlatform').value;
+    if (!platformValue || platformValue === "") platformValue = "Outros";
+
     const formData = {
         title: document.getElementById('inputGameName').value,
-        platform: document.getElementById('inputPlatform').value || 'Outros',
+        platform: platformValue,
         status: document.getElementById('inputStatus').value,
         price_paid: document.getElementById('inputPrice').value,
         price_sold: document.getElementById('inputSoldPrice').value,
@@ -246,55 +304,6 @@ const handleDelete = async () => {
             showToast("Erro ao excluir", "error");
         }
     }
-};
-
-// --- RENDER API RESULTS ---
-const renderApiResults = (games) => {
-    const container = document.getElementById('apiResults');
-    container.innerHTML = '';
-    
-    if(!games || games.length === 0) {
-        container.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Nenhum resultado</div>';
-        return;
-    }
-
-    games.forEach(g => {
-        const item = document.createElement('div');
-        item.className = 'api-item';
-        const year = g.released ? g.released.split('-')[0] : 'N/A';
-        
-        item.innerHTML = `
-            <img src="${g.background_image || ''}" alt="Cover"> 
-            <div class="api-info">
-                <strong>${g.name}</strong>
-                <small>${year}</small>
-            </div>
-        `;
-        item.onclick = () => selectApiGame(g);
-        container.appendChild(item);
-    });
-};
-
-const selectApiGame = (game) => {
-    document.getElementById('inputGameName').value = game.name;
-    document.getElementById('inputImage').value = game.background_image || '';
-    
-    const select = document.getElementById('inputPlatform');
-    select.innerHTML = ''; 
-
-    if (game.platforms && game.platforms.length > 0) {
-        game.platforms.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.platform.name;
-            option.innerText = p.platform.name;
-            select.appendChild(option);
-        });
-        select.selectedIndex = 0;
-    } else {
-        select.innerHTML = '<option value="Outros">Outros</option>';
-    }
-
-    document.getElementById('apiResults').classList.add('hidden');
 };
 
 document.addEventListener('DOMContentLoaded', init);
