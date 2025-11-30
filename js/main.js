@@ -1,7 +1,16 @@
-import { Auth, DB } from './supabase.js';
+import { supabase, Auth, DB } from './supabase.js'; // Importa supabase direto
 import { renderKPIs, renderGrid, populateFilters } from './ui.js';
 
-// --- Estado da Aplicação ---
+// --- DEBUGGER MOBILE (REMOVER EM PRODUÇÃO) ---
+const debugEl = document.createElement('div');
+debugEl.style.cssText = "position:fixed; top:0; left:0; width:100%; background:rgba(200,0,0,0.9); color:white; font-size:10px; z-index:99999; padding:5px; pointer-events:none; font-family:monospace;";
+document.body.appendChild(debugEl);
+const log = (msg) => {
+    console.log(msg);
+    debugEl.innerHTML = msg + "<br>" + debugEl.innerHTML;
+};
+// ---------------------------------------------
+
 const state = {
     user: null,
     games: [],
@@ -10,137 +19,117 @@ const state = {
     platformFilter: 'all'
 };
 
-// --- Elementos do DOM (Cache) ---
 const DOM = {
     loginOverlay: document.getElementById('loginOverlay'),
     appContainer: document.getElementById('appContainer'),
     loginForm: document.getElementById('loginForm'),
     userEmailDisplay: document.getElementById('userEmailDisplay'),
-    btnLogout: document.getElementById('btnLogout'),
-    kpiContainer: document.getElementById('kpi-container'),
     gamesContainer: document.getElementById('gamesContainer'),
     searchInput: document.getElementById('searchInput'),
     platformSelect: document.getElementById('platformSelect'),
     tabs: document.querySelectorAll('.tab-btn'),
-    btnNewGame: document.getElementById('btnNewGame')
+    loginMessage: document.getElementById('loginMessage')
 };
 
-// --- Inicialização ---
 const init = async () => {
-    console.log("Inicializando GameVault...");
+    log("🚀 Init iniciado...");
+    log("URL Hash: " + window.location.hash);
 
-    // 1. UI DE CARREGAMENTO IMEDIATO
-    // Se tiver hash na URL (retorno do email), esconde o form imediatamente para não confundir
-    const hasHash = window.location.hash.includes('access_token') || window.location.hash.includes('type=recovery');
-    if (hasHash) {
-        if(DOM.loginForm) DOM.loginForm.classList.add('hidden');
-        const msg = document.getElementById('loginMessage');
-        if(msg) {
-            msg.innerText = "Validando credenciais...";
-            msg.style.color = "var(--primary)";
-        }
+    // 1. Tratamento Visual Inicial
+    if (window.location.hash.includes('access_token')) {
+        log("🔑 Hash Token detectado!");
+        if (DOM.loginOverlay) DOM.loginOverlay.classList.remove('hidden');
+        if (DOM.loginForm) DOM.loginForm.classList.add('hidden'); // Esconde form
+        if (DOM.loginMessage) DOM.loginMessage.innerText = "Processando Token...";
     }
 
-    // 2. CONFIGURA O LISTENER (Para mudanças futuras)
-    Auth.onStateChange((user) => {
-        handleUserAuth(user);
-    });
-
-    // 3. VERIFICAÇÃO FORÇADA DE SESSÃO (A Correção do Bug Mobile)
-    // Não esperamos o listener. Perguntamos ativamente: "Já tem usuário?"
+    // 2. TENTATIVA DIRETA DE SESSÃO (A Correção Real)
+    // getSession processa o token da URL internamente
     try {
-        const user = await Auth.getUser();
-        if (user) {
-            console.log("Sessão ativa encontrada manualmente.");
-            handleUserAuth(user);
-        } else if (hasHash) {
-            // Se tem hash mas o getUser falhou, esperamos um pouco o Supabase processar
-            console.log("Hash detectado, aguardando processamento do Supabase...");
-            setTimeout(async () => {
-                const retryUser = await Auth.getUser();
-                if (retryUser) handleUserAuth(retryUser);
-                else {
-                    // Se falhar mesmo assim, mostra erro e volta o form
-                    if(DOM.loginForm) DOM.loginForm.classList.remove('hidden');
-                    const msg = document.getElementById('loginMessage');
-                    if(msg) msg.innerText = "Link expirado ou inválido. Tente novamente.";
-                }
-            }, 2000);
+        log("🔄 Verificando getSession()...");
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+            log("❌ Erro getSession: " + error.message);
+            showLoginScreen();
+        } else if (data.session) {
+            log("✅ Sessão encontrada via getSession!");
+            handleUserAuth(data.session.user);
+        } else {
+            log("ℹ️ Nenhuma sessão ativa.");
+            // Se tem hash mas não tem sessão, aguarda o listener
+            if (!window.location.hash.includes('access_token')) {
+                showLoginScreen();
+            }
         }
     } catch (e) {
-        console.error("Erro na verificação inicial:", e);
+        log("❌ Exceção Fatal: " + e.message);
+        showLoginScreen();
     }
+
+    // 3. Listener (Rede de Segurança)
+    supabase.auth.onAuthStateChange((event, session) => {
+        log(`📡 Evento Auth: ${event}`);
+        if (session?.user) {
+            handleUserAuth(session.user);
+        } else if (event === 'SIGNED_OUT') {
+            showLoginScreen();
+        }
+    });
 
     setupEventListeners();
 };
 
-// --- Função Centralizada de Autenticação ---
 const handleUserAuth = async (user) => {
-    // Evita rodar duas vezes se o listener e a verificação manual pegarem ao mesmo tempo
-    if (state.user?.email === user?.email) return;
-
+    // Evita re-renderizar se já estiver logado
+    if (state.user?.id === user.id) return;
+    
+    log(`👤 Autenticado: ${user.email}`);
     state.user = user;
 
-    if (user) {
-        // --- LOGADO ---
-        console.log("✅ Usuário Autenticado:", user.email);
-        
-        if(DOM.userEmailDisplay) DOM.userEmailDisplay.innerText = user.email;
-        
-        // Esconde Login / Mostra App
-        if(DOM.loginOverlay) DOM.loginOverlay.classList.add('hidden');
-        if(DOM.appContainer) DOM.appContainer.classList.remove('hidden');
+    // UI Update Force
+    if(DOM.loginOverlay) DOM.loginOverlay.classList.add('hidden');
+    if(DOM.appContainer) DOM.appContainer.classList.remove('hidden');
+    if(DOM.userEmailDisplay) DOM.userEmailDisplay.innerText = user.email;
 
-        // Reseta form (para logout futuro)
-        if(DOM.loginForm) DOM.loginForm.classList.remove('hidden');
-        const msg = document.getElementById('loginMessage');
-        if(msg) msg.innerText = "";
-
-        // Carrega Jogos
-        await loadUserLibrary();
-        
-        // Limpa a URL (apenas visual)
-        if (window.location.hash) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-    } else {
-        // --- DESLOGADO ---
-        // Só mostra login se não tiver hash (processando)
-        if (!window.location.hash.includes('access_token')) {
-            if(DOM.loginOverlay) DOM.loginOverlay.classList.remove('hidden');
-            if(DOM.appContainer) DOM.appContainer.classList.add('hidden');
-        }
+    // Limpa URL
+    if (window.location.hash) {
+        window.history.replaceState({}, document.title, window.location.pathname);
     }
+
+    await loadUserLibrary();
 };
 
-// --- Carregamento de Dados ---
+const showLoginScreen = () => {
+    state.user = null;
+    if(DOM.loginOverlay) DOM.loginOverlay.classList.remove('hidden');
+    if(DOM.appContainer) DOM.appContainer.classList.add('hidden');
+    if(DOM.loginForm) DOM.loginForm.classList.remove('hidden');
+    if(DOM.loginMessage) DOM.loginMessage.innerText = "";
+};
+
 const loadUserLibrary = async () => {
-    if(DOM.gamesContainer) DOM.gamesContainer.innerHTML = '<div class="spinner" style="margin-top:50px"></div>';
+    log("📥 Baixando jogos...");
+    if(DOM.gamesContainer) DOM.gamesContainer.innerHTML = '<div class="spinner"></div>';
     
     const data = await DB.getGames();
+    log(`📦 Jogos recebidos: ${data.length}`);
+    
     state.games = data || [];
     refreshApp();
 };
 
-// --- UI Logic ---
 const refreshApp = () => {
+    // Lógica de Renderização (Idêntica à anterior)
     const filtered = filterGames();
+    const collection = state.games.filter(g => g.status !== 'Vendido');
+    const sold = state.games.filter(g => g.status === 'Vendido');
     
-    const collectionItems = state.games.filter(g => g.status !== 'Vendido');
-    const soldItems = state.games.filter(g => g.status === 'Vendido');
-    
-    renderKPIs(collectionItems, soldItems);
+    renderKPIs(collection, sold);
     populateFilters(state.games);
 
     if (state.games.length === 0) {
-        DOM.gamesContainer.innerHTML = `
-            <div style="grid-column: 1/-1; text-align: center; padding: 3rem; border: 1px dashed #333; border-radius: 20px; color: #888;">
-                <h2 style="font-family:'Orbitron'; color:white; margin-bottom:10px;">VAULT VAZIO</h2>
-                <p>Nenhum jogo encontrado.</p>
-                <button class="btn-primary" style="margin-top:15px" onclick="alert('Em breve!')">+ Adicionar Jogo</button>
-            </div>
-        `;
+        if(DOM.gamesContainer) DOM.gamesContainer.innerHTML = `<div style="text-align:center; padding:2rem; color:#888;">Vault Vazio.<br><br>Adicione jogos no PC primeiro (ou aguarde update).</div>`;
     } else {
         renderGrid(filtered, state.currentTab === 'sold');
     }
@@ -159,63 +148,46 @@ const filterGames = () => {
     });
 };
 
-// --- Event Listeners ---
 const setupEventListeners = () => {
-    // Login Form
     if (DOM.loginForm) {
         DOM.loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
-            const btn = DOM.loginForm.querySelector('button');
-            const msg = document.getElementById('loginMessage');
+            log(`✉️ Enviando link para: ${email}`);
             
-            // UI Loading
+            const btn = DOM.loginForm.querySelector('button');
+            const originalBtn = btn.innerHTML;
+            btn.innerHTML = "Enviando...";
             btn.disabled = true;
-            const originalText = btn.innerText;
-            btn.innerText = "ENVIANDO...";
 
             try {
                 const { error } = await Auth.signIn(email);
                 if (error) throw error;
-                
-                msg.innerHTML = "✨ Link enviado!<br>Cheque seu e-mail.";
-                msg.style.color = "var(--success)";
+                DOM.loginMessage.innerHTML = "<span style='color:#00ff41'>Link Enviado! Cheque o email no celular.</span>";
             } catch (err) {
-                msg.innerText = "Erro: " + err.message;
-                msg.style.color = "red";
+                log("❌ Erro login: " + err.message);
+                DOM.loginMessage.innerText = "Erro: " + err.message;
             } finally {
+                btn.innerHTML = originalBtn;
                 btn.disabled = false;
-                btn.innerText = originalText;
             }
         });
     }
-
+    
     // Logout
-    if (DOM.btnLogout) {
-        DOM.btnLogout.addEventListener('click', () => {
-            if(confirm("Sair do sistema?")) Auth.signOut();
-        });
-    }
+    const btnLogout = document.getElementById('btnLogout');
+    if(btnLogout) btnLogout.addEventListener('click', () => Auth.signOut());
 
-    // Tabs
-    DOM.tabs.forEach(tab => {
-        tab.addEventListener('click', (e) => {
-            DOM.tabs.forEach(t => t.classList.remove('active'));
-            e.target.classList.add('active');
-            state.currentTab = e.target.dataset.tab;
-            refreshApp();
-        });
-    });
-
-    // Filtros
-    if (DOM.searchInput) DOM.searchInput.addEventListener('input', (e) => {
-        state.search = e.target.value;
+    // Tabs & Filters
+    DOM.tabs.forEach(t => t.addEventListener('click', (e) => {
+        DOM.tabs.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        state.currentTab = e.target.dataset.tab;
         refreshApp();
-    });
-    if (DOM.platformSelect) DOM.platformSelect.addEventListener('change', (e) => {
-        state.platformFilter = e.target.value;
-        refreshApp();
-    });
+    }));
+    
+    if(DOM.searchInput) DOM.searchInput.addEventListener('input', (e) => { state.search = e.target.value; refreshApp(); });
+    if(DOM.platformSelect) DOM.platformSelect.addEventListener('change', (e) => { state.platformFilter = e.target.value; refreshApp(); });
 };
 
 document.addEventListener('DOMContentLoaded', init);
