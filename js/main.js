@@ -70,39 +70,42 @@ const renderApiResults = (games) => {
     });
 };
 
+// --- FUNÇÃO DE SELEÇÃO DINÂMICA (SEM MAPA MANUAL) ---
 const selectApiGame = (game) => {
     // 1. Preenche Nome e Imagem
     document.getElementById('inputGameName').value = game.name;
     document.getElementById('inputImage').value = game.background_image || '';
     
-    // 2. Lógica de Automação de Plataforma
+    // 2. Lógica Dinâmica de Plataforma
     const select = document.getElementById('inputPlatform');
-    let found = false;
+    
+    // Limpa as opções "fixas" que estavam no HTML
+    select.innerHTML = '';
 
-    // Tenta encontrar uma plataforma compatível nos dados da API
+    // Verifica se o jogo tem plataformas listadas na API
     if (game.platforms && game.platforms.length > 0) {
-        // Itera sobre as plataformas que o jogo suporta
-        for (let p of game.platforms) {
-            const apiName = p.platform.name.toLowerCase();
-            
-            // Verifica nosso dicionário
-            for (let [key, value] of Object.entries(platformMap)) {
-                if (apiName.includes(key)) {
-                    select.value = value;
-                    found = true;
-                    break;
-                }
-            }
-            if (found) break;
-        }
+        
+        // Cria uma opção para cada plataforma que o jogo suporta
+        game.platforms.forEach(p => {
+            const option = document.createElement('option');
+            // O valor e o texto serão exatamente o que vem da API (ex: "PlayStation 5", "Xbox Series S/X")
+            option.value = p.platform.name; 
+            option.innerText = p.platform.name;
+            select.appendChild(option);
+        });
+
+        // Opcional: Seleciona a primeira opção automaticamente
+        select.selectedIndex = 0;
+        
+    } else {
+        // Fallback: Se a API não trouxer plataformas (raro, mas acontece em jogos indie/antigos)
+        // Mantemos uma opção genérica ou restauramos uma lista básica
+        select.innerHTML = '<option value="Outros">Outros / Desconhecido</option>';
     }
 
-    // Se não achou automaticamente, reseta para "Selecione"
-    if (!found) select.value = "";
-
-    // Esconde resultados
+    // Esconde a lista de resultados
     document.getElementById('apiResults').classList.add('hidden');
     
     // Feedback visual
-    showToast(`Dados de "${game.name}" carregados!`);
+    showToast(`Plataformas de "${game.name}" carregadas!`);
 };
