@@ -1,223 +1,108 @@
-import { supabase, AuthService } from './services/supabase.js';
-import { GameService } from './services/api.js';
-import { appStore } from './modules/store.js';
-import { renderApp, showToast, toggleModal } from './modules/ui.js';
-
-// --- INICIALIZAÇÃO SEGURA ---
-const init = async () => {
-    console.log("🚀 GameVault Pro Iniciado");
-
-    // 1. Inscrever a UI nas mudanças de estado
-    appStore.subscribe(renderApp);
-
-    // 2. Auth Listener (Resolve Race Conditions)
-    supabase.auth.onAuthStateChange(async (event, session) => {
-        // Remover Loader Global
-        const loader = document.getElementById('globalLoader');
-        if (loader) loader.classList.add('hidden');
-
-        if (session?.user) {
-            handleUserLoggedIn(session.user);
-        } else {
-            handleUserLoggedOut();
-        }
-    });
-
-    setupEvents();
+// --- NOVO: Dicionário de Mapeamento de Plataformas ---
+// Esquerda: O que vem da API RAWG (parcial) | Direita: O value do seu <select> HTML
+const platformMap = {
+    'playstation 5': 'PS5',
+    'playstation 4': 'PS4',
+    'xbox series': 'Xbox Series',
+    'xbox one': 'Xbox Series', // Mapeando One para Series ou crie uma option separada
+    'nintendo switch': 'Nintendo Switch',
+    'pc': 'PC',
+    'macos': 'PC',
+    'linux': 'PC'
 };
 
-const handleUserLoggedIn = async (user) => {
-    document.getElementById('loginOverlay').classList.add('hidden');
-    document.getElementById('appContainer').classList.remove('hidden');
+// --- API RAWG (Atualizada para Debug) ---
+let timeout;
+// Certifique-se que o ID no HTML é inputGameName
+const inputSearch = document.getElementById('inputGameName');
+
+inputSearch.oninput = (e) => {
+    const query = e.target.value;
     
-    // Atualiza Header
-    const nameEl = document.getElementById('userName');
-    const imgEl = document.getElementById('userAvatar');
-    nameEl.innerText = user.user_metadata.full_name || user.email.split('@')[0];
-    if(user.user_metadata.avatar_url) {
-        imgEl.src = user.user_metadata.avatar_url;
-        imgEl.style.display = 'block';
+    // Feedback visual que está digitando
+    const container = document.getElementById('apiResults');
+    
+    if (query.length < 3) {
+        container.classList.add('hidden');
+        return;
     }
 
-    appStore.setState({ user });
-    await loadData();
-};
-
-const handleUserLoggedOut = () => {
-    document.getElementById('loginOverlay').classList.remove('hidden');
-    document.getElementById('appContainer').classList.add('hidden');
-    appStore.setState({ user: null, games: [] });
-};
-
-const loadData = async () => {
-    try {
-        const games = await GameService.fetchGames();
-        appStore.setState({ games });
-    } catch (err) {
-        console.error(err);
-        showToast("Erro ao carregar dados", "error");
-    }
-};
-
-// --- EVENTOS ---
-const setupEvents = () => {
-    // Auth
-    document.getElementById('btnGoogle').onclick = async () => {
-        try {
-            document.getElementById('loginMessage').innerText = "Conectando ao Google...";
-            await AuthService.signInGoogle();
-        } catch (e) {
-            showToast("Erro no Login: " + e.message, "error");
-        }
-    };
-    document.getElementById('btnLogout').onclick = AuthService.signOut;
-
-    // Modal
-    document.getElementById('btnOpenAddModal').onclick = () => openGameModal();
-    document.getElementById('btnCloseModal').onclick = () => toggleModal(false);
-
-    // Form Submit
-    document.getElementById('gameForm').onsubmit = handleFormSubmit;
-    document.getElementById('btnDeleteGame').onclick = handleDelete;
-
-    // Tabs
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = (e) => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            appStore.setState({ filter: e.target.dataset.tab });
-        };
-    });
-
-    // Search
-    document.getElementById('searchInput').oninput = (e) => {
-        appStore.setState({ searchTerm: e.target.value });
-    };
-
-    // API RAWG Debounce
-    let timeout;
-    document.getElementById('inputGameName').oninput = (e) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(async () => {
-            const results = await GameService.searchRawg(e.target.value);
-            renderApiResults(results);
-        }, 500);
-    };
-
-    // Venda Toggle
-    document.getElementById('inputStatus').onchange = (e) => {
-        const group = document.getElementById('soldGroup');
-        if (e.target.value === 'Vendido') group.classList.remove('hidden');
-        else group.classList.add('hidden');
-    };
-};
-
-// --- LOGICA DE FORMULÁRIO ---
-let editingId = null;
-
-const openGameModal = (gameId = null) => {
-    const form = document.getElementById('gameForm');
-    form.reset();
-    editingId = gameId;
-    document.getElementById('apiResults').classList.add('hidden');
-    document.getElementById('soldGroup').classList.add('hidden');
-
-    if (gameId) {
-        // Modo Edição
-        const game = appStore.get().games.find(g => g.id === gameId);
-        document.getElementById('modalTitle').innerText = "Editar Jogo";
-        document.getElementById('btnDeleteGame').classList.remove('hidden');
-
-        document.getElementById('inputGameName').value = game.title;
-        document.getElementById('inputPlatform').value = game.platform;
-        document.getElementById('inputPrice').value = game.price_paid;
-        document.getElementById('inputStatus').value = game.status;
-        document.getElementById('inputImage').value = game.image_url;
+    // Debounce para não chamar API a cada letra
+    clearTimeout(timeout);
+    timeout = setTimeout(async () => {
+        container.innerHTML = '<div style="padding:10px; text-align:center; color:#888"><div class="spinner" style="width:20px;height:20px;border-width:2px"></div> Buscando...</div>';
+        container.classList.remove('hidden');
         
-        if (game.status === 'Vendido') {
-            document.getElementById('soldGroup').classList.remove('hidden');
-            document.getElementById('inputSoldPrice').value = game.price_sold;
-        }
-    } else {
-        // Modo Novo
-        document.getElementById('modalTitle').innerText = "Novo Jogo";
-        document.getElementById('btnDeleteGame').classList.add('hidden');
-    }
-    toggleModal(true);
-};
-
-// Expor globalmente para o onclick do HTML
-window.editGame = (id) => openGameModal(id);
-
-const handleFormSubmit = async (e) => {
-    e.preventDefault();
-    const btn = e.target.querySelector('button[type="submit"]');
-    const originalText = btn.innerText;
-    btn.innerText = "Salvando...";
-    btn.disabled = true;
-
-    const formData = {
-        title: document.getElementById('inputGameName').value,
-        platform: document.getElementById('inputPlatform').value,
-        status: document.getElementById('inputStatus').value,
-        price_paid: parseFloat(document.getElementById('inputPrice').value) || 0,
-        price_sold: parseFloat(document.getElementById('inputSoldPrice').value) || 0,
-        image_url: document.getElementById('inputImage').value
-    };
-
-    try {
-        if (editingId) {
-            await GameService.updateGame(editingId, formData);
-            showToast("Jogo atualizado!");
-        } else {
-            await GameService.addGame(formData);
-            showToast("Jogo adicionado!");
-        }
-        toggleModal(false);
-        await loadData();
-    } catch (err) {
-        showToast("Erro: " + err.message, "error");
-    } finally {
-        btn.innerText = originalText;
-        btn.disabled = false;
-    }
-};
-
-const handleDelete = async () => {
-    if (confirm("Tem certeza que deseja excluir este jogo?")) {
-        try {
-            await GameService.deleteGame(editingId);
-            showToast("Jogo excluído");
-            toggleModal(false);
-            await loadData();
-        } catch (err) {
-            showToast("Erro ao excluir", "error");
-        }
-    }
+        const results = await GameService.searchRawg(query);
+        renderApiResults(results);
+    }, 600); // Espere 600ms após parar de digitar
 };
 
 const renderApiResults = (games) => {
     const container = document.getElementById('apiResults');
     container.innerHTML = '';
     
-    if(!games.length) return container.classList.add('hidden');
+    if(!games || games.length === 0) {
+        container.innerHTML = '<div style="padding:10px; text-align:center; color:#888">Nenhum jogo encontrado</div>';
+        return;
+    }
+
     container.classList.remove('hidden');
 
     games.forEach(g => {
         const item = document.createElement('div');
         item.className = 'api-item';
+        
+        // Pega o ano de lançamento
+        const year = g.released ? g.released.split('-')[0] : 'N/A';
+        
         item.innerHTML = `
-            <img src="${g.background_image}" style="width:30px;height:30px;border-radius:4px;object-fit:cover"> 
-            <span>${g.name} (${g.released?.slice(0,4) || 'N/A'})</span>
+            <img src="${g.background_image || 'assets/no-img.jpg'}"> 
+            <div class="api-info">
+                <strong>${g.name}</strong>
+                <small>${year} • ${g.platforms?.map(p => p.platform.name).slice(0, 2).join(', ')}</small>
+            </div>
         `;
-        item.onclick = () => {
-            document.getElementById('inputGameName').value = g.name;
-            document.getElementById('inputImage').value = g.background_image;
-            container.classList.add('hidden');
-        };
+        
+        // Ao clicar, preenche tudo automaticamente
+        item.onclick = () => selectApiGame(g);
         container.appendChild(item);
     });
 };
 
-// Start
-document.addEventListener('DOMContentLoaded', init);
+const selectApiGame = (game) => {
+    // 1. Preenche Nome e Imagem
+    document.getElementById('inputGameName').value = game.name;
+    document.getElementById('inputImage').value = game.background_image || '';
+    
+    // 2. Lógica de Automação de Plataforma
+    const select = document.getElementById('inputPlatform');
+    let found = false;
+
+    // Tenta encontrar uma plataforma compatível nos dados da API
+    if (game.platforms && game.platforms.length > 0) {
+        // Itera sobre as plataformas que o jogo suporta
+        for (let p of game.platforms) {
+            const apiName = p.platform.name.toLowerCase();
+            
+            // Verifica nosso dicionário
+            for (let [key, value] of Object.entries(platformMap)) {
+                if (apiName.includes(key)) {
+                    select.value = value;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
+
+    // Se não achou automaticamente, reseta para "Selecione"
+    if (!found) select.value = "";
+
+    // Esconde resultados
+    document.getElementById('apiResults').classList.add('hidden');
+    
+    // Feedback visual
+    showToast(`Dados de "${game.name}" carregados!`);
+};
