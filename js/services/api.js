@@ -2,7 +2,7 @@ import { supabase } from './supabase.js';
 
 // 🔴 SUBSTITUA ESTA CHAVE PELA SUA CHAVE NOVA DO RAWG.IO
 // A chave antiga foi bloqueada. Pegue uma free em: https://rawg.io/apidocs
-const RAWG_API_KEY = '03a8f74ab0684719a04c9fc1445fc46f'; 
+const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6'; 
 
 export const GameService = {
     // Busca todos os jogos do usuário
@@ -56,7 +56,7 @@ export const GameService = {
         if (!query || query.length < 3) return [];
         
         // Verifica se a chave foi configurada
-        if (RAWG_API_KEY === '03a8f74ab0684719a04c9fc1445fc46f') {
+        if (RAWG_API_KEY === 'b435fbadf8c24701adce7ef05814f0d6') {
             throw new Error("Chave de API inválida. Configure no arquivo api.js");
         }
         
