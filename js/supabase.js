@@ -3,17 +3,26 @@
 const supabaseUrl = 'https://hyeeclvizibfzeemiqle.supabase.co'; 
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5ZWVjbHZpemliZnplZW1pcWxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0OTQ5NDIsImV4cCI6MjA4MDA3MDk0Mn0.kE0BV4RAZweE4On2sQ3kaQWBcwa8eCcBdnwh__zDtlY'; 
 
-// Cria e EXPORTA o cliente diretamente
-export const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+// CRÍTICO: flowType: 'implicit' permite login em abas diferentes (Mobile)
+export const supabase = window.supabase.createClient(supabaseUrl, supabaseKey, {
+    auth: {
+        flowType: 'implicit',
+        detectSessionInUrl: true,
+        persistSession: true
+    }
+});
 
 export const Auth = {
     signIn: async (email) => {
-        // Tenta detectar a URL atual automaticamente
-        const redirectTo = window.location.href.split('#')[0]; // Remove hashes antigos
+        // Redireciona para a mesma URL que o usuário está agora
+        // Remove hashes antigos para não confundir
+        const currentUrl = window.location.href.split('#')[0];
         
         return await supabase.auth.signInWithOtp({
             email,
-            options: { emailRedirectTo: redirectTo }
+            options: { 
+                emailRedirectTo: currentUrl
+            }
         });
     },
     
@@ -22,7 +31,6 @@ export const Auth = {
         window.location.reload();
     },
 
-    // Wrapper simples para pegar sessão atual
     getSession: async () => {
         return await supabase.auth.getSession();
     }
