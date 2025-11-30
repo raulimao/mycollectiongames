@@ -1,76 +1,76 @@
-:root {
-    --bg-dark: #0f0f13;
-    --bg-card: #18181b;
-    --text-main: #f4f4f5;
-    --text-muted: #a1a1aa;
-    --primary: #bc13fe;
-    --secondary: #00ff41;
-    --danger: #ff4444;
-    --glass-bg: rgba(30, 30, 35, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --blur: 16px;
+/* --- CSS Mobile Fixes --- */
+
+/* 1. Botões de Ação (Editar/Excluir) sempre visíveis no mobile */
+@media (hover: none) {
+    .card-actions {
+        opacity: 1 !important; /* Força visibilidade sem hover */
+        background: rgba(0,0,0,0.5); /* Fundo escuro para destacar */
+        border-radius: 20px;
+        padding: 4px;
+        top: 8px;
+        right: 8px;
+    }
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* 2. Ajustes de Layout Mobile */
+@media (max-width: 600px) {
+    /* Login ocupa menos espaço e fonte menor */
+    .login-card {
+        padding: 1.5rem;
+        width: 95%;
+    }
+    .login-header h2 { font-size: 1.5rem; }
 
-body {
-    background-color: var(--bg-dark);
-    color: var(--text-main);
-    font-family: 'Inter', sans-serif;
-    min-height: 100vh;
-    background-image: 
-        radial-gradient(circle at 5% 10%, rgba(188, 19, 254, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 95% 90%, rgba(0, 255, 65, 0.06) 0%, transparent 40%);
-    overflow-x: hidden;
-}
+    /* Filtros empilhados */
+    .controls-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.8rem;
+    }
 
-.app-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem;
-    padding-bottom: 6rem;
-}
+    .tabs {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .tab-btn {
+        flex: 1;
+        text-align: center;
+        font-size: 0.8rem;
+        padding: 0.6rem;
+    }
 
-/* Header */
-.dashboard-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 2rem;
-    margin-bottom: 2.5rem;
-}
+    .filters {
+        flex-direction: column;
+    }
 
-.logo-area h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -1.5px; }
-.highlight { color: var(--primary); text-shadow: 0 0 15px rgba(188, 19, 254, 0.4); }
-.subtitle { color: var(--text-muted); font-size: 0.85rem; letter-spacing: 3px; text-transform: uppercase; }
+    .search-box, .platform-select {
+        width: 100%;
+    }
 
-/* User Area */
-.user-controls {
-    display: flex; align-items: center; gap: 1rem;
-    position: absolute; top: 2rem; right: 2rem;
-}
-.user-email { font-size: 0.85rem; color: var(--text-muted); }
-.btn-small { padding: 0.4rem 0.8rem; font-size: 0.75rem; border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: white; cursor: pointer; }
-.btn-small:hover { border-color: var(--danger); color: var(--danger); }
-
-/* KPI Grid */
-.kpi-grid { display: flex; gap: 1.5rem; flex-wrap: wrap; width: 100%; margin-top: 1rem; }
-.kpi-card {
-    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.0) 100%);
-    border: 1px solid var(--glass-border);
-    padding: 1rem 1.5rem;
-    border-radius: 12px;
-    min-width: 150px;
-    backdrop-filter: blur(5px);
-}
-.kpi-label { font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem; }
-.kpi-value { font-size: 1.4rem; font-weight: 700; }
-.profit { color: var(--secondary); text-shadow: 0 0 8px rgba(0,255,65,0.2); }
-
-@media (max-width: 768px) {
-    .dashboard-header { flex-direction: column; align-items: flex-start; }
-    .user-controls { position: relative; top: 0; right: 0; margin-bottom: 1rem; width: 100%; justify-content: space-between; }
-    .kpi-grid { width: 100%; }
-    .kpi-card { flex: 1; }
+    /* Grid de Jogos em 1 coluna */
+    .games-grid {
+        grid-template-columns: 1fr; /* 1 card por linha */
+    }
+    
+    /* Botão flutuante não atrapalhar scroll */
+    .fab-btn {
+        bottom: 1.5rem;
+        right: 1.5rem;
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+    
+    /* Modal ocupa tela toda no celular */
+    .modal-content {
+        width: 100%;
+        height: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+        padding: 1.5rem;
+    }
+    .form-row {
+        grid-template-columns: 1fr; /* Inputs um embaixo do outro */
+    }
 }
