@@ -1,19 +1,39 @@
 import { appStore } from './store.js';
 
-// Elementos DOM
+// Cache DOM
 const DOM = {
     grid: document.getElementById('gamesContainer'),
     kpi: document.getElementById('kpi-container'),
     toast: document.getElementById('toastContainer'),
-    modal: document.getElementById('gameModal')
+    modal: document.getElementById('gameModal'),
+    filterBadge: document.getElementById('chartFilterBadge'),
+    filterName: document.getElementById('filterName')
 };
 
+// Hook global para alternar gráficos
+window.switchChart = (mode) => {
+    // Atualiza visual dos botões
+    document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+    // Encontra o botão clicado (gambiarra segura baseada no texto/onclick)
+    const btns = document.querySelectorAll('.chart-tab');
+    if(mode === 'platform') btns[0].classList.add('active');
+    if(mode === 'status') btns[1].classList.add('active');
+    if(mode === 'cost') btns[2].classList.add('active');
+
+    appStore.setState({ chartMode: mode });
+};
+
+window.clearChartFilter = () => {
+    appStore.setState({ activePlatform: null });
+};
+
+// --- RENDER MAIN ---
 export const renderApp = (state) => {
     let filteredGames = state.games || [];
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
-
-    // Filtragem
+    
+    // 1. Filtro de Abas (Coleção/Backlog/Vendidos)
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'backlog') {
@@ -22,20 +42,33 @@ export const renderApp = (state) => {
         filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog'].includes(g.status));
     }
 
+    // 2. Filtro de Busca Texto
     if (term) {
         filteredGames = filteredGames.filter(g => g.title.toLowerCase().includes(term));
     }
 
+    // 3. NOVO: Filtro Interativo do Gráfico
+    if (state.activePlatform) {
+        filteredGames = filteredGames.filter(g => g.platform === state.activePlatform);
+        
+        // Mostra o badge de filtro
+        DOM.filterBadge.classList.remove('hidden');
+        DOM.filterName.innerText = state.activePlatform;
+    } else {
+        DOM.filterBadge.classList.add('hidden');
+    }
+
     renderGrid(filteredGames);
     renderKPIs(state.games);
-    renderChart(state.games);
+    renderChart(state.games, state.chartMode);
 };
 
+// --- GRID ---
 const renderGrid = (games) => {
     DOM.grid.innerHTML = '';
     
     if (games.length === 0) {
-        DOM.grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted); font-size:1.1rem;"><i class="fa-solid fa-ghost fa-3x" style="margin-bottom:20px; opacity:0.3; filter:drop-shadow(0 0 10px var(--primary))"></i><br>Nenhum jogo encontrado nesta dimensão.</div>`;
+        DOM.grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted); font-size:1.1rem;"><i class="fa-solid fa-filter-circle-xmark fa-3x" style="margin-bottom:20px; opacity:0.3; color:var(--primary)"></i><br>Nenhum jogo encontrado com os filtros atuais.</div>`;
         return;
     }
 
@@ -84,7 +117,7 @@ const getBadgeClass = (status) => {
     }
 };
 
-// --- KPIs PREMIUM ---
+// --- KPIs ---
 const renderKPIs = (allGames) => {
     if (!DOM.kpi) return;
     
@@ -133,40 +166,112 @@ const renderKPIs = (allGames) => {
     `;
 };
 
-// --- CHART NEON ---
+// --- CHART SYSTEM (10X VALUE) ---
 let chartInstance = null;
-const renderChart = (games) => {
+
+const renderChart = (games, mode = 'platform') => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
 
-    const platforms = {};
-    games.forEach(g => { platforms[g.platform] = (platforms[g.platform] || 0) + 1; });
-
     if (chartInstance) chartInstance.destroy();
 
-    const neonColors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700'];
+    // Paleta Neon
+    const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6'];
 
-    chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(platforms),
-            datasets: [{
-                data: Object.values(platforms),
-                backgroundColor: neonColors,
-                borderColor: '#0a0a0c', borderWidth: 2, hoverBorderColor: 'white', hoverBorderWidth: 3, hoverOffset: 10
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false, layout: { padding: 20 },
-            plugins: {
-                legend: { position: 'right', labels: { color: '#e2e8f0', font: { family: 'Inter', size: 12 }, padding: 20, usePointStyle: true } },
-                tooltip: { backgroundColor: 'rgba(20, 20, 25, 0.9)', titleFont: { family: 'Orbitron' }, bodyFont: { family: 'Inter' }, borderColor: '#d946ef', borderWidth: 1, displayColors: false }
+    // 1. MODO PLATAFORMA (Doughnut Interativo)
+    if (mode === 'platform') {
+        const platforms = {};
+        games.forEach(g => { platforms[g.platform] = (platforms[g.platform] || 0) + 1; });
+        
+        chartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(platforms),
+                datasets: [{
+                    data: Object.values(platforms),
+                    backgroundColor: colors,
+                    borderColor: '#0a0a0c', borderWidth: 2, hoverOffset: 15
+                }]
             },
-            cutout: '65%'
-        }
-    });
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '60%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true, font: {family:'Inter'} } }
+                },
+                // EVENTO DE CLIQUE (FILTRO)
+                onClick: (evt, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const label = Object.keys(platforms)[index];
+                        appStore.setState({ activePlatform: label });
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. MODO STATUS (Polar Area - Radar Sci-Fi)
+    else if (mode === 'status') {
+        const statuses = {};
+        games.forEach(g => { statuses[g.status] = (statuses[g.status] || 0) + 1; });
+
+        chartInstance = new Chart(ctx, {
+            type: 'polarArea',
+            data: {
+                labels: Object.keys(statuses),
+                datasets: [{
+                    data: Object.values(statuses),
+                    backgroundColor: colors.map(c => c + '99'), // Adiciona transparência
+                    borderColor: colors, borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    r: { 
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: { display: false, backdropColor: 'transparent' }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true } }
+                }
+            }
+        });
+    }
+
+    // 3. MODO CUSTOS (Barra Horizontal - Top 5 Mais Caros)
+    else if (mode === 'cost') {
+        // Pega top 5 jogos mais caros
+        const sorted = [...games].sort((a,b) => b.price_paid - a.price_paid).slice(0, 5);
+        
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: sorted.map(g => g.title.length > 15 ? g.title.substring(0,15)+'...' : g.title),
+                datasets: [{
+                    label: 'Custo (R$)',
+                    data: sorted.map(g => g.price_paid),
+                    backgroundColor: colors[1],
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Barra Horizontal
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#aaa' } },
+                    y: { grid: { display: false }, ticks: { color: 'white' } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
 };
 
+// Utils
 export const showToast = (msg, type = 'success') => {
     const el = document.createElement('div');
     el.className = `toast ${type}`;

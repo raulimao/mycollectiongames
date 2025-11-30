@@ -8,8 +8,10 @@ class Store {
         return {
             user: null,
             games: [],
-            filter: 'collection',
-            searchTerm: ''
+            filter: 'collection', // collection | backlog | sold
+            searchTerm: '',
+            activePlatform: null, // NOVO: Filtro vindo do gráfico
+            chartMode: 'platform' // NOVO: platform | status | cost
         };
     }
 

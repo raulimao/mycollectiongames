@@ -53,9 +53,31 @@
         <section class="dashboard-grid">
             <div id="kpi-container" class="kpi-group"></div>
             
-            <div class="chart-container glass-panel">
+        <div class="chart-container glass-panel">
+            <div class="chart-header">
+                <span class="chart-title-deco">ANALYTICS // SYSTEM</span>
+                <div class="chart-controls">
+                    <button class="chart-tab active" onclick="window.switchChart('platform')">
+                        <i class="fa-solid fa-gamepad"></i> PLATFORM
+                    </button>
+                    <button class="chart-tab" onclick="window.switchChart('status')">
+                        <i class="fa-solid fa-chart-pie"></i> STATUS
+                    </button>
+                    <button class="chart-tab" onclick="window.switchChart('cost')">
+                        <i class="fa-solid fa-coins"></i> GASTOS
+                    </button>
+                </div>
+            </div>
+            
+            <div class="canvas-wrapper">
                 <canvas id="collectionChart"></canvas>
             </div>
+
+            <div id="chartFilterBadge" class="chart-filter-badge hidden" onclick="window.clearChartFilter()">
+                <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> 
+                <small>(Clique p/ limpar)</small>
+            </div>
+        </div>
         </section>
 
         <section class="controls-panel glass-panel">

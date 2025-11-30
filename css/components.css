@@ -63,11 +63,62 @@
 }
 
 /* CHART CONTAINER */
-.chart-container { position: relative; height: 320px; padding: 30px; box-shadow: inset 0 0 50px rgba(0,0,0,0.5), 0 20px 50px rgba(0,0,0,0.5); }
-.chart-container::after {
-    content: 'ANALYTICS // VISUALIZER'; position: absolute; top: 10px; left: 20px;
-    font-family: var(--font-num); font-size: 0.7rem; color: rgba(255,255,255,0.2); letter-spacing: 2px;
+/* css/components.css (Atualização do Chart) */
+
+/* CHART CONTAINER AVANÇADO */
+.chart-container {
+    position: relative;
+    height: 420px; /* Mais alto para caber os controles */
+    padding: 25px;
+    display: flex; flex-direction: column;
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.8), 0 20px 50px rgba(0,0,0,0.5);
 }
+
+.chart-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 15px;
+}
+
+.chart-title-deco {
+    font-family: var(--font-num); font-size: 0.75rem; color: var(--secondary);
+    letter-spacing: 2px; text-transform: uppercase;
+    text-shadow: 0 0 5px var(--secondary-glow);
+}
+
+/* Abas de Controle do Gráfico */
+.chart-controls { display: flex; gap: 10px; }
+
+.chart-tab {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-muted); padding: 8px 12px; border-radius: 6px;
+    font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: 0.3s;
+    font-family: var(--font-num); letter-spacing: 1px;
+}
+
+.chart-tab:hover { background: rgba(255,255,255,0.1); color: white; }
+
+.chart-tab.active {
+    background: rgba(217, 70, 239, 0.15); border-color: var(--primary);
+    color: var(--primary); box-shadow: 0 0 10px rgba(217, 70, 239, 0.2);
+}
+
+.canvas-wrapper {
+    flex: 1; position: relative; min-height: 0; /* Corrige bug do flexbox */
+}
+
+/* Badge de Filtro Ativo (Quando clica na pizza) */
+.chart-filter-badge {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--primary); color: white; padding: 8px 20px;
+    border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+    box-shadow: 0 0 15px var(--primary-glow); cursor: pointer;
+    animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 10;
+}
+.chart-filter-badge:hover { background: #b00fe0; transform: translateX(-50%) scale(1.05); }
+
+@keyframes slideUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 
 /* --- CONTROLS & BUTTONS --- */
 .controls-panel { display: flex; justify-content: space-between; gap: 20px; padding: 20px 30px; align-items: center; flex-wrap: wrap; }
