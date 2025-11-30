@@ -61,7 +61,7 @@ export const DB = {
         signIn: async (email) => {
             const { data, error } = await supabase.auth.signInWithOtp({
                 email: email,
-                options: { emailRedirectTo: window.location.origin }
+                options: { emailRedirectTo: window.location.href }
             });
             return { data, error };
         },
