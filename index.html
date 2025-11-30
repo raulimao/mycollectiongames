@@ -160,6 +160,30 @@
         </div>
     </div>
 
+    <div id="nicknameModal" class="modal-overlay hidden" style="z-index: 9999;">
+        <div class="modal-content glass-panel" style="max-width: 400px; text-align: center;">
+            <div style="margin-bottom: 20px;">
+                <i class="fa-solid fa-fingerprint fa-3x" style="color:var(--primary); text-shadow:0 0 15px var(--primary)"></i>
+            </div>
+            
+            <h2 style="font-family:var(--font-num); margin-bottom:10px;">IDENTIDADE</h2>
+            <p style="color:var(--text-muted); margin-bottom:25px; font-size:0.9rem;">
+                Crie seu <strong>Gamertag</strong> único para compartilhar sua coleção.
+            </p>
+            
+            <form id="nicknameForm">
+                <div class="input-group">
+                    <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required 
+                           style="text-align:center; font-family:var(--font-num); letter-spacing:1px; font-size:1.2rem; text-transform:lowercase;"
+                           pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
+                </div>
+                <button type="submit" class="btn-primary" style="width:100%; justify-content:center;">
+                    CONFIRMAR ID
+                </button>
+            </form>
+        </div>
+    </div>
+
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
