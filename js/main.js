@@ -2,7 +2,8 @@ import { supabase, Auth, DB } from './supabase.js';
 import { renderKPIs, renderGrid, populateFilters } from './ui.js';
 
 // --- CONFIGURAÇÃO ---
-const RAWG_API_KEY = '03a8f74ab0684719a04c9fc1445fc46f'; // <--- COLE SUA CHAVE AQUI
+// COLE SUA CHAVE AQUI (O .trim() remove espaços acidentais)
+const RAWG_API_KEY = '03a8f74ab0684719a04c9fc1445fc46f'.trim(); 
 
 // --- ESTADO ---
 const state = {
@@ -19,13 +20,11 @@ const DOM = {
     appContainer: document.getElementById('appContainer'),
     btnGoogle: document.getElementById('btnGoogle'),
     gamesContainer: document.getElementById('gamesContainer'),
-    
-    // Modal & Form
     modal: document.getElementById('gameModal'),
     form: document.getElementById('gameForm'),
     modalTitle: document.getElementById('modalTitle'),
     inputGameName: document.getElementById('inputGameName'),
-    inputPlatform: document.getElementById('inputPlatform'), // Select de Plataforma
+    inputPlatform: document.getElementById('inputPlatform'),
     apiResults: document.getElementById('apiResults'),
     inputStatus: document.getElementById('inputStatus'),
     soldGroup: document.getElementById('soldGroup'),
@@ -34,6 +33,7 @@ const DOM = {
 
 // --- INIT ---
 const init = async () => {
+    // Verifica Sessão
     const { data } = await Auth.getSession();
     if (data?.session) handleUserAuth(data.session.user);
     else DOM.loginOverlay.classList.remove('hidden');
@@ -50,27 +50,40 @@ const handleUserAuth = async (user) => {
     state.user = user;
     DOM.loginOverlay.classList.add('hidden');
     DOM.appContainer.classList.remove('hidden');
+    
+    // Mostra avatar
+    const avatar = document.getElementById('userAvatar');
+    if (avatar && user.user_metadata.avatar_url) {
+        avatar.src = user.user_metadata.avatar_url;
+        avatar.classList.remove('hidden');
+    }
+
     await loadUserLibrary();
 };
 
 const loadUserLibrary = async () => {
+    // 1. Inicia Spinner
     DOM.gamesContainer.innerHTML = '<div class="spinner"></div>';
+    
     try {
+        // 2. Tenta buscar
         state.games = await DB.getGames();
         refreshApp();
     } catch (e) {
-        console.error(e);
+        console.error("Erro no load:", e);
+        DOM.gamesContainer.innerHTML = '<div style="color:red; padding:2rem; text-align:center;">Erro ao carregar coleção.<br>Verifique o console.</div>';
+    } finally {
+        // 3. SE a lista estiver vazia e não houve erro, mostra empty state
+        // O refreshApp já cuida disso, então o spinner some automaticamente ao renderizar o grid
     }
 };
 
 const refreshApp = () => {
     let filtered = state.games;
     
-    // Filtro Aba
     if (state.currentTab === 'collection') filtered = filtered.filter(g => g.status !== 'Vendido');
     else filtered = filtered.filter(g => g.status === 'Vendido');
 
-    // Filtro Busca
     filtered = filtered.filter(item => {
         const nome = item.jogo || item.nome || '';
         return nome.toLowerCase().includes(state.search.toLowerCase()) &&
@@ -90,13 +103,11 @@ const searchRawgGames = async (query) => {
     }
     
     try {
-        // Busca jogo e inclui info de plataformas (parent_platforms)
         const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${query}&page_size=5`;
         const res = await fetch(url);
         
         if (res.status === 401) {
-            console.error("ERRO 401: Chave de API inválida. Verifique o main.js");
-            DOM.apiResults.innerHTML = '<div style="padding:10px; color:red">Erro na API Key</div>';
+            DOM.apiResults.innerHTML = '<div style="padding:10px; color:#ff4444; font-size:0.8rem;">Erro API: Chave Inválida (401)</div>';
             DOM.apiResults.classList.remove('hidden');
             return;
         }
@@ -115,59 +126,57 @@ const renderApiResults = (games) => {
     games.forEach(game => {
         const div = document.createElement('div');
         div.className = 'api-item';
-        // Pega o ano de lançamento
         const year = game.released ? game.released.split('-')[0] : 'N/A';
         
         div.innerHTML = `
             <img src="${game.background_image || ''}" class="api-thumb">
             <div>
                 <div style="font-weight:bold">${game.name}</div>
-                <div style="font-size:0.7rem; color:#888">${year} • ${game.platforms?.length || 0} Plataformas</div>
+                <div style="font-size:0.7rem; color:#888">${year} • ${game.platforms?.length || 0} Plats.</div>
             </div>
         `;
-        // Passa o objeto COMPLETO do jogo para a função de seleção
         div.onclick = () => selectApiGame(game);
         DOM.apiResults.appendChild(div);
     });
     DOM.apiResults.classList.remove('hidden');
 };
 
-// --- AQUI ACONTECE A MÁGICA DAS PLATAFORMAS ---
+// --- SELEÇÃO INTELIGENTE DE PLATAFORMA ---
 const selectApiGame = (game) => {
-    // 1. Preenche Nome e Imagem
+    // Preenche dados básicos
     document.getElementById('inputGameName').value = game.name;
     document.getElementById('inputImage').value = game.background_image || '';
     
-    // 2. Limpa o select de plataformas atual
+    // LÓGICA DE PLATAFORMAS:
+    // Limpa o select e preenche APENAS com as plataformas que o jogo realmente tem.
     DOM.inputPlatform.innerHTML = '';
     
-    // 3. Adiciona opção padrão
-    const defaultOption = document.createElement('option');
-    defaultOption.value = "";
-    defaultOption.innerText = "Selecione a versão...";
-    DOM.inputPlatform.appendChild(defaultOption);
-
-    // 4. Preenche APENAS com as plataformas que o jogo tem
     if (game.platforms && game.platforms.length > 0) {
+        // Adiciona opção padrão "Escolha..."
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = "";
+        defaultOpt.innerText = "Escolha a Plataforma...";
+        DOM.inputPlatform.appendChild(defaultOpt);
+
         game.platforms.forEach(p => {
             const opt = document.createElement('option');
-            opt.value = p.platform.name; // Ex: "PlayStation 5"
+            opt.value = p.platform.name;
             opt.innerText = p.platform.name;
             DOM.inputPlatform.appendChild(opt);
         });
         
-        // Se só tiver UMA plataforma (exclusivo), seleciona automaticamente
+        // Se for exclusivo (só 1 plataforma), seleciona sozinho
         if (game.platforms.length === 1) {
             DOM.inputPlatform.value = game.platforms[0].platform.name;
         } else {
-            // Tenta focar no select para o usuário escolher
+            // Se tiver várias, foca para o usuário escolher
             DOM.inputPlatform.focus();
         }
     } else {
-        // Fallback se a API não trouxer plataformas (raro)
+        // Fallback
         const opt = document.createElement('option');
         opt.value = "Outros";
-        opt.innerText = "Outros / Genérico";
+        opt.innerText = "Outros";
         DOM.inputPlatform.appendChild(opt);
     }
 
@@ -181,21 +190,16 @@ const openModal = (game = null) => {
     DOM.apiResults.classList.add('hidden');
     DOM.soldGroup.classList.add('hidden');
     
-    // Restaura lista padrão de plataformas se for novo jogo manual
-    if (!game) {
-        resetPlatformOptions(); 
-    }
+    if (!game) resetPlatformOptions(); 
 
     if (game) {
-        // MODO EDIÇÃO
         state.editingId = game.id;
         DOM.modalTitle.innerText = "Editar Jogo";
         DOM.btnDelete.classList.remove('hidden');
         
         document.getElementById('inputGameName').value = game.jogo || game.nome;
         
-        // Garante que a plataforma do jogo exista no select (caso tenha sido importada ou editada)
-        // Se não existir na lista padrão, cria ela na hora
+        // Garante que a plataforma exista no select
         const exists = [...DOM.inputPlatform.options].some(o => o.value === game.plataforma);
         if (!exists) {
             const opt = document.createElement('option');
@@ -220,7 +224,6 @@ const openModal = (game = null) => {
     }
 };
 
-// Restaura as plataformas genéricas caso o usuário queira digitar manualmente sem buscar na API
 const resetPlatformOptions = () => {
     DOM.inputPlatform.innerHTML = `
         <option value="">Selecione...</option>
@@ -249,9 +252,7 @@ const handleFormSubmit = async (e) => {
     }
 
     try {
-        // Feedback visual
         const btn = DOM.form.querySelector('button[type="submit"]');
-        const originalText = btn.innerText;
         btn.innerText = "Salvando...";
         btn.disabled = true;
 
@@ -291,7 +292,7 @@ const setupEventListeners = () => {
     DOM.form.addEventListener('submit', handleFormSubmit);
 
     DOM.btnDelete.addEventListener('click', async () => {
-        if(confirm("Tem certeza que quer excluir este jogo?")) {
+        if(confirm("Tem certeza que quer excluir?")) {
             await DB.deleteGame(state.editingId);
             DOM.modal.classList.add('hidden');
             loadUserLibrary();
@@ -308,7 +309,8 @@ const setupEventListeners = () => {
     });
 
     if(DOM.btnGoogle) DOM.btnGoogle.addEventListener('click', () => Auth.signInWithProvider('google'));
-    if(document.getElementById('btnGithub')) document.getElementById('btnGithub').addEventListener('click', () => Auth.signInWithProvider('github'));
+    const btnGithub = document.getElementById('btnGithub');
+    if(btnGithub) btnGithub.addEventListener('click', () => Auth.signInWithProvider('github'));
     document.getElementById('btnLogout').addEventListener('click', () => Auth.signOut());
     
     document.getElementById('searchInput').addEventListener('input', (e) => { state.search = e.target.value; refreshApp(); });
