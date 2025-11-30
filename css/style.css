@@ -1,4 +1,6 @@
+/* css/style.css */
 :root {
+    /* Cores e Tema */
     --bg-dark: #0f0f11;
     --bg-card: rgba(30, 30, 35, 0.7);
     --glass-border: 1px solid rgba(255, 255, 255, 0.1);
@@ -12,26 +14,41 @@
     
     --font-ui: 'Inter', sans-serif;
     --font-num: 'Orbitron', sans-serif;
+
+    /* Camadas (Z-Index System) */
+    --z-back: -1;
+    --z-normal: 1;
+    --z-nav: 100;
+    --z-modal: 1000;
+    --z-tooltip: 2000;
+    --z-loader: 9999;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    width: 100%;
+}
 
 body {
     background-color: var(--bg-dark);
     color: var(--text-main);
     font-family: var(--font-ui);
-    min-height: 100vh;
+    line-height: 1.6;
     overflow-x: hidden;
 }
 
 /* Background Cyberpunk */
 .bg-grid {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
     background-image: 
         linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;
-    z-index: -1;
+    z-index: var(--z-back);
+    pointer-events: none; /* Garante que cliques passem pelo background */
 }
 
 .app-container {
@@ -39,6 +56,8 @@ body {
     margin: 0 auto;
     padding: 20px;
     padding-bottom: 80px;
+    position: relative;
+    z-index: var(--z-normal);
 }
 
 /* Header */
@@ -47,22 +66,28 @@ body {
     padding: 20px 0; margin-bottom: 30px; border-bottom: var(--glass-border);
 }
 
-.logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; }
+.logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; margin: 0; }
+.logo .icon { margin-right: 10px; font-size: 1.5rem; }
+
 .user-profile { display: flex; align-items: center; gap: 15px; }
-.avatar-img { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--primary); }
+.avatar-img { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--primary); object-fit: cover; }
+.btn-small {
+    background: transparent; border: 1px solid var(--danger); color: var(--danger);
+    padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+    transition: 0.2s;
+}
+.btn-small:hover { background: var(--danger); color: white; }
 
 /* Dashboard Grid (KPIs + Chart) */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: 1fr 1.5fr; /* KPIs ocupam menos, Chart mais */
+    grid-template-columns: 1fr 1.5fr;
     gap: 20px;
     margin-bottom: 30px;
 }
 
 @media (max-width: 768px) {
     .dashboard-grid { grid-template-columns: 1fr; }
-    .controls-panel { flex-direction: column; }
-    .filters-group { width: 100%; }
 }
 
 /* Grid de Jogos */
@@ -73,5 +98,6 @@ body {
     margin-top: 20px;
 }
 
-/* Utilitários */
+/* Utilitários Globais */
 .hidden { display: none !important; }
+.text-green { color: var(--success); }

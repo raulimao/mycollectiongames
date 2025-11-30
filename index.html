@@ -18,15 +18,16 @@
 
     <div class="bg-grid"></div>
 
-    <div id="globalLoader" class="login-overlay hidden" style="z-index: 10000; background: #121212;">
+    <div id="globalLoader" class="login-overlay">
         <div class="spinner"></div>
+        <p style="margin-top: 15px; color: #666; font-size: 0.9rem;">Inicializando Vault...</p>
     </div>
 
     <div id="loginOverlay" class="login-overlay hidden">
         <div class="login-content glass-panel">
-            <div class="logo-large">
-                <span class="icon-pulse">👾</span>
-                <h1>GAME<span class="neon-text">VAULT</span></h1>
+            <div class="logo" style="margin-bottom: 20px; font-size: 2rem;">
+                <span style="color:var(--primary)">👾</span>
+                <span style="font-family: var(--font-num);">GAME<span style="color:var(--primary)">VAULT</span></span>
             </div>
             <p class="login-subtitle">Gerencie sua coleção como um profissional</p>
             
@@ -34,7 +35,7 @@
                 <i class="fa-brands fa-google"></i> Entrar com Google
             </button>
             
-            <p id="loginMessage" class="status-msg"></p>
+            <p id="loginMessage" style="margin-top: 15px; color: var(--danger); font-size: 0.9rem;"></p>
         </div>
     </div>
 
@@ -46,14 +47,15 @@
             </div>
             <div class="user-profile">
                 <img id="userAvatar" class="avatar-img" src="" alt="User" style="display:none">
-                <span id="userName" class="user-name">Carregando...</span>
+                <span id="userName" style="font-size: 0.9rem; font-weight: 600;">Carregando...</span>
                 <button id="btnLogout" class="btn-small">SAIR</button>
             </div>
         </header>
 
         <section class="dashboard-grid">
-            <div id="kpi-container" class="kpi-group"></div>
-            <div class="chart-container glass-panel">
+            <div id="kpi-container" class="kpi-group" style="display:flex; flex-direction:column; gap:15px;">
+                </div>
+            <div class="chart-container glass-panel" style="position: relative; height: 250px;">
                 <canvas id="collectionChart"></canvas>
             </div>
         </section>
@@ -75,7 +77,8 @@
             </div>
         </section>
 
-        <main id="gamesContainer" class="games-grid"></main>
+        <main id="gamesContainer" class="games-grid">
+            </main>
     </div>
 
     <div id="gameModal" class="modal-overlay hidden">
@@ -89,46 +92,47 @@
                 <input type="hidden" id="editGameId">
                 
                 <div class="input-group">
-                    <label>Nome do Jogo</label>
-                    <input type="text" id="inputGameName" placeholder="Digite para buscar automaticamente..." autocomplete="off" required>
+                    <label>Nome do Jogo (Busca Automática)</label>
+                    <input type="text" id="inputGameName" placeholder="Ex: God of War..." autocomplete="off" required>
                     <div id="apiResults" class="api-results hidden"></div>
                 </div>
 
-                <div class="row">
-                    <div class="input-group">
+                <div class="row" style="display: flex; gap: 15px;">
+                    <div class="input-group" style="flex: 1;">
                         <label>Plataforma</label>
-                        <option value="">Busque um jogo para carregar as plataformas...</option>
-                        </select>
+                        <select id="inputPlatform" required>
+                            <option value="">Selecione...</option>
+                            </select>
                     </div>
-                    <div class="input-group">
+                    <div class="input-group" style="flex: 1;">
                         <label>Preço Pago (R$)</label>
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="input-group">
+                <div class="row" style="display: flex; gap: 15px;">
+                    <div class="input-group" style="flex: 1;">
                         <label>Status Atual</label>
                         <select id="inputStatus" required>
-                            <option value="Coleção">Na Estante (Coleção)</option>
-                            <option value="Backlog">Backlog (Não joguei)</option>
+                            <option value="Coleção">Na Estante</option>
+                            <option value="Backlog">Backlog</option>
                             <option value="Jogando">Jogando Agora</option>
                             <option value="Zerado">Zerado</option>
-                            <option value="Platinado">Platinado (100%)</option>
-                            <option value="À venda">Colocado à Venda</option>
+                            <option value="Platinado">Platinado</option>
+                            <option value="À venda">À venda</option>
                             <option value="Vendido">Já Vendido</option>
                         </select>
                     </div>
                     
-                    <div class="input-group hidden" id="soldGroup">
-                        <label>Valor de Venda (R$)</label>
+                    <div class="input-group hidden" id="soldGroup" style="flex: 1;">
+                        <label>Valor Venda (R$)</label>
                         <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
                 <input type="hidden" id="inputImage">
 
-                <div class="modal-actions">
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                     <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
                     <button type="submit" class="btn-primary">Salvar Jogo</button>
                 </div>
