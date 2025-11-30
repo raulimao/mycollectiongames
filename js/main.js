@@ -1,55 +1,157 @@
-import { Storage } from './storage.js';
+// --- js/main.js ---
+import { DB } from './supabase.js';
 import { renderGrid, updateKPIs, showToast } from './ui.js';
 
-// --- Estado Global ---
 let appData = [];
+let currentUser = null;
 const state = {
-    currentTab: 'collection', // 'collection' | 'sold'
+    currentTab: 'collection',
     search: '',
     platform: 'all'
 };
 
-// --- DOM Elements ---
+// DOM Elements
 const modal = document.getElementById('gameModal');
 const form = document.getElementById('gameForm');
 const soldFields = document.getElementById('soldFields');
 const statusInput = document.getElementById('inputStatus');
+const loginOverlay = document.getElementById('loginOverlay');
 
-// --- Inicialização ---
-const init = () => {
-    appData = Storage.getAll();
-    refreshUI();
-    setupEventListeners();
+const init = async () => {
+    // Verifica Auth
+    currentUser = await DB.auth.getUser();
+
+    if (currentUser) {
+        loginOverlay.classList.add('hidden');
+        document.getElementById('userArea').classList.remove('hidden');
+        document.getElementById('userEmail').innerText = currentUser.email;
+        await loadData();
+        setupEventListeners();
+    } else {
+        loginOverlay.classList.remove('hidden');
+        setupLoginListener();
+    }
 };
 
-// --- Core Logic ---
+const loadData = async () => {
+    showToast('Sincronizando...', 'info');
+    appData = await DB.getAll();
+    populatePlatformFilter();
+    refreshUI();
+};
+
 const refreshUI = () => {
-    // 1. Filtrar dados baseados na aba e inputs
     let filtered = appData.filter(item => {
-        // Aba Coleção: mostra tudo MENOS vendidos. Aba Histórico: SÓ vendidos.
         const isSoldItem = item.status === 'Vendido';
         if (state.currentTab === 'collection' && isSoldItem) return false;
         if (state.currentTab === 'sold' && !isSoldItem) return false;
 
-        // Filtros de texto e plataforma
-        const matchText = item.jogo.toLowerCase().includes(state.search.toLowerCase());
+        const matchText = item.nome.toLowerCase().includes(state.search.toLowerCase());
         const matchPlat = state.platform === 'all' || item.plataforma === state.platform;
-        
         return matchText && matchPlat;
     });
 
-    // 2. Renderizar
     renderGrid('gamesContainer', filtered);
-    updateKPIs(appData); // KPIs olham para o todo
-    populatePlatformFilter();
+    updateKPIs(appData);
 };
 
-// Popula dropdown de filtro dinamicamente
+const setupLoginListener = () => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('btnLogin');
+        const msg = document.getElementById('loginMessage');
+        const email = document.getElementById('emailInput').value;
+
+        btn.disabled = true; btn.innerText = "Enviando...";
+        
+        const { error } = await DB.auth.signIn(email);
+        
+        if (error) {
+            msg.innerText = "Erro: " + error.message;
+            msg.className = "login-msg error";
+            btn.disabled = false;
+        } else {
+            msg.innerText = "Link enviado! Verifique seu e-mail.";
+            msg.className = "login-msg success";
+            msg.classList.remove('hidden');
+            btn.innerText = "Verifique o E-mail";
+        }
+    });
+};
+
+const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.innerText = "Salvando...";
+
+    const id = document.getElementById('gameId').value;
+    const status = document.getElementById('inputStatus').value;
+    const preco = parseFloat(document.getElementById('inputPrice').value) || 0;
+    const vendido = parseFloat(document.getElementById('inputSoldPrice').value) || 0;
+
+    const gameObj = {
+        nome: document.getElementById('inputName').value,
+        plataforma: document.getElementById('inputPlatform').value,
+        tipo: document.getElementById('inputType').value,
+        preco: preco,
+        status: status,
+        vendido: status === 'Vendido' ? vendido : 0,
+        imagem: document.getElementById('inputImage').value,
+        user_id: currentUser.id
+    };
+
+    try {
+        if (id) await DB.update({ ...gameObj, id });
+        else await DB.add(gameObj);
+        
+        showToast('Salvo com sucesso!');
+        closeModal();
+        await loadData();
+    } catch (error) {
+        console.error(error);
+        showToast('Erro ao salvar.', 'error');
+    } finally {
+        btn.disabled = false; btn.innerText = "Salvar na Nuvem";
+    }
+};
+
+const handleDelete = async (id) => {
+    if(confirm('Tem certeza?')) {
+        try {
+            await DB.delete(id);
+            showToast('Item excluído.');
+            await loadData();
+        } catch (error) {
+            showToast('Erro ao excluir.', 'error');
+        }
+    }
+};
+
+// UI Helpers
+const openModal = (item = null) => {
+    modal.classList.remove('hidden');
+    document.getElementById('modalTitle').innerText = item ? 'Editar Jogo' : 'Novo Jogo';
+    form.reset();
+    document.getElementById('gameId').value = '';
+    if (item) {
+        document.getElementById('gameId').value = item.id;
+        document.getElementById('inputName').value = item.nome;
+        document.getElementById('inputPlatform').value = item.plataforma;
+        document.getElementById('inputType').value = item.tipo;
+        document.getElementById('inputPrice').value = item.preco;
+        document.getElementById('inputStatus').value = item.status;
+        document.getElementById('inputSoldPrice').value = item.vendido || '';
+        document.getElementById('inputImage').value = item.imagem || '';
+        statusInput.dispatchEvent(new Event('change'));
+    }
+};
+
+const closeModal = () => modal.classList.add('hidden');
+
 const populatePlatformFilter = () => {
     const select = document.getElementById('platformFilter');
     const currentVal = select.value;
     const plats = [...new Set(appData.map(i => i.plataforma))].sort();
-    
     select.innerHTML = '<option value="all">Todas as Plataformas</option>';
     plats.forEach(p => {
         const opt = document.createElement('option');
@@ -59,70 +161,9 @@ const populatePlatformFilter = () => {
     select.value = currentVal;
 };
 
-// --- Modal & Form Actions ---
-const openModal = (item = null) => {
-    modal.classList.remove('hidden');
-    document.getElementById('modalTitle').innerText = item ? 'Editar Jogo' : 'Novo Jogo';
-    
-    // Reset form
-    form.reset();
-    document.getElementById('gameId').value = '';
-
-    if (item) {
-        // Preencher formulário
-        document.getElementById('gameId').value = item.id;
-        document.getElementById('inputName').value = item.jogo;
-        document.getElementById('inputPlatform').value = item.plataforma;
-        document.getElementById('inputType').value = item.tipo;
-        document.getElementById('inputPrice').value = item.preco;
-        document.getElementById('inputStatus').value = item.status;
-        document.getElementById('inputSoldPrice').value = item.vendido || '';
-        document.getElementById('inputImage').value = item.imagem || '';
-        
-        // Disparar evento para mostrar campos de venda se necessário
-        statusInput.dispatchEvent(new Event('change'));
-    }
-};
-
-const closeModal = () => modal.classList.add('hidden');
-
-const handleFormSubmit = (e) => {
-    e.preventDefault();
-    
-    const id = document.getElementById('gameId').value;
-    const status = document.getElementById('inputStatus').value;
-    const preco = parseFloat(document.getElementById('inputPrice').value) || 0;
-    const vendido = parseFloat(document.getElementById('inputSoldPrice').value) || 0;
-
-    const newItem = {
-        id: id || Date.now().toString(36), // Gera ID se for novo
-        jogo: document.getElementById('inputName').value,
-        plataforma: document.getElementById('inputPlatform').value,
-        tipo: document.getElementById('inputType').value,
-        preco: preco,
-        status: status,
-        vendido: status === 'Vendido' ? vendido : 0,
-        lucro: status === 'Vendido' ? (vendido - preco) : 0,
-        imagem: document.getElementById('inputImage').value
-    };
-
-    appData = Storage.saveItem(newItem);
-    refreshUI();
-    closeModal();
-    showToast('Jogo salvo com sucesso!');
-};
-
-const handleDelete = (id) => {
-    if(confirm('Tem certeza que deseja excluir este item?')) {
-        appData = Storage.deleteItem(id);
-        refreshUI();
-        showToast('Item removido.', 'error');
-    }
-};
-
-// --- Event Listeners ---
 const setupEventListeners = () => {
-    // Tabs
+    document.getElementById('btnLogout').addEventListener('click', DB.auth.signOut);
+    
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -132,35 +173,29 @@ const setupEventListeners = () => {
         });
     });
 
-    // Filtros
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        state.search = e.target.value;
-        refreshUI();
-    });
-    document.getElementById('platformFilter').addEventListener('change', (e) => {
-        state.platform = e.target.value;
-        refreshUI();
-    });
+    document.getElementById('searchInput').addEventListener('input', (e) => { state.search = e.target.value; refreshUI(); });
+    document.getElementById('platformFilter').addEventListener('change', (e) => { state.platform = e.target.value; refreshUI(); });
 
-    // Modal - Abrir/Fechar
     document.getElementById('btnAddGame').addEventListener('click', () => openModal());
     document.getElementById('btnCloseModal').addEventListener('click', closeModal);
     document.getElementById('btnCancel').addEventListener('click', closeModal);
     
-    // Mostrar campo de venda se status for "Vendido"
     statusInput.addEventListener('change', (e) => {
         if(e.target.value === 'Vendido') soldFields.classList.remove('hidden');
         else soldFields.classList.add('hidden');
     });
 
-    // Form Submit
+    form.removeEventListener('submit', handleFormSubmit);
     form.addEventListener('submit', handleFormSubmit);
 
-    // Grid Actions (Edit/Delete - Event Delegation)
-    document.getElementById('gamesContainer').addEventListener('click', (e) => {
+    // Event Delegation para Grid
+    const grid = document.getElementById('gamesContainer');
+    const newGrid = grid.cloneNode(true);
+    grid.parentNode.replaceChild(newGrid, grid);
+    
+    newGrid.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
-        
         const id = btn.dataset.id;
         if (btn.classList.contains('btn-edit')) {
             const item = appData.find(i => i.id === id);
@@ -171,5 +206,4 @@ const setupEventListeners = () => {
     });
 };
 
-// Start
 document.addEventListener('DOMContentLoaded', init);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Collection Dashboard Pro</title>
+    <title>Game Collection SaaS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
@@ -12,12 +12,36 @@
 </head>
 <body>
 
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card glass-panel">
+            <div class="login-header">
+                <h2>Bem-vindo</h2>
+                <p>Gerencie sua coleção na nuvem.<br>Digite seu e-mail para entrar.</p>
+            </div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <input type="email" id="emailInput" placeholder="seu@email.com" required>
+                </div>
+                <button type="submit" class="btn-primary full-width" id="btnLogin">
+                    Receber Link Mágico ✨
+                </button>
+            </form>
+            <div id="loginMessage" class="login-msg hidden"></div>
+        </div>
+    </div>
+
     <div class="app-container">
         <header class="dashboard-header">
             <div class="logo-area">
                 <h1>MY<span class="highlight">COLLECTION</span></h1>
-                <p class="subtitle">Ultimate Manager</p>
+                <p class="subtitle">Cloud Edition</p>
             </div>
+            
+            <div class="user-controls hidden" id="userArea">
+                <span id="userEmail" class="user-email">Carregando...</span>
+                <button id="btnLogout" class="btn-secondary btn-small">Sair</button>
+            </div>
+
             <div class="kpi-grid" id="kpi-container">
                 </div>
         </header>
@@ -108,14 +132,13 @@
                 </div>
 
                 <div class="form-group">
-                    <label>URL da Imagem da Capa</label>
+                    <label>URL da Imagem (Opcional)</label>
                     <input type="url" id="inputImage" placeholder="https://...">
-                    <small style="color:var(--text-muted); font-size: 0.7rem;">Cole o link de uma imagem (JPG/PNG)</small>
                 </div>
 
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" id="btnCancel">Cancelar</button>
-                    <button type="submit" class="btn-primary">Salvar</button>
+                    <button type="submit" class="btn-primary">Salvar na Nuvem</button>
                 </div>
             </form>
         </div>
@@ -123,6 +146,7 @@
 
     <div id="toastContainer" class="toast-container"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
