@@ -1,18 +1,16 @@
 import { supabase, Auth, DB } from './supabase.js';
 import { renderKPIs, renderGrid, populateFilters } from './ui.js';
 
-// --- DEBUGGER MOBILE (MANTIDO PARA TESTE) ---
+// --- DEBUGGER (MANTIDO PARA CONFIRMAR O SUCESSO) ---
 const debugEl = document.createElement('div');
-debugEl.style.cssText = "position:fixed; top:0; left:0; width:100%; background:rgba(0,0,0,0.8); color:#00ff41; font-size:11px; z-index:99999; padding:8px; pointer-events:none; font-family:monospace; border-bottom:1px solid #00ff41;";
+debugEl.style.cssText = "position:fixed; top:0; left:0; width:100%; background:rgba(0,0,0,0.85); color:#00ff41; font-size:11px; z-index:99999; padding:10px; pointer-events:none; font-family:monospace; border-bottom:1px solid #00ff41;";
 document.body.appendChild(debugEl);
 const log = (msg) => {
     console.log(msg);
-    // Mostra apenas as últimas 2 linhas para não poluir
-    const lines = debugEl.innerHTML.split("<br>").slice(0, 1);
-    debugEl.innerHTML = msg + "<br>" + lines.join("<br>");
+    debugEl.innerHTML = `> ${msg}<br>${debugEl.innerHTML.split('<br>').slice(0,2).join('<br>')}`;
 };
-// ---------------------------------------------
 
+// --- Estado ---
 const state = {
     user: null,
     games: [],
@@ -33,59 +31,77 @@ const DOM = {
     loginMessage: document.getElementById('loginMessage')
 };
 
+// --- INICIALIZAÇÃO ---
 const init = async () => {
-    log("🚀 Iniciando (Modo Implicit)...");
+    log("🚀 Iniciando Sistema...");
 
-    // 1. Verifica se estamos voltando do email
-    const isAuthRedirect = window.location.hash && (window.location.hash.includes('access_token') || window.location.hash.includes('type=recovery'));
+    // 1. O LINK MÁGICO CHEGOU? (Detecção Manual)
+    const hash = window.location.hash;
+    const hasToken = hash.includes('access_token') && hash.includes('type=recovery') || hash.includes('type=magiclink');
 
-    if (isAuthRedirect) {
-        log("🔑 Token detectado na URL!");
+    if (hasToken) {
+        log("⚡ Token detectado na URL! Forçando login...");
+        
+        // UI: Mostra que está trabalhando
         if (DOM.loginOverlay) DOM.loginOverlay.classList.remove('hidden');
-        if (DOM.loginForm) DOM.loginForm.classList.add('hidden'); 
-        if (DOM.loginMessage) DOM.loginMessage.innerText = "Autenticando sessão...";
+        if (DOM.loginForm) DOM.loginForm.classList.add('hidden');
+        if (DOM.loginMessage) DOM.loginMessage.innerHTML = "<span class='spinner'></span> Processando Credenciais...";
+
+        // --- A MÁGICA: Extração Manual do Token ---
+        // Não esperamos o Supabase. Nós mesmos pegamos os dados.
+        try {
+            // Remove o '#' inicial e parseia
+            const params = new URLSearchParams(hash.substring(1));
+            const access_token = params.get('access_token');
+            const refresh_token = params.get('refresh_token');
+
+            if (access_token) {
+                log("🔓 Token extraído. Definindo sessão...");
+                
+                // Força o Supabase a usar estes tokens
+                const { data, error } = await supabase.auth.setSession({
+                    access_token,
+                    refresh_token
+                });
+
+                if (error) throw error;
+
+                if (data.session) {
+                    log("✅ SESSÃO FORÇADA COM SUCESSO!");
+                    handleUserAuth(data.session.user);
+                    return; // Encerra o init aqui, já logamos
+                }
+            }
+        } catch (e) {
+            log("❌ Falha ao forçar sessão: " + e.message);
+            showLoginScreen();
+        }
     }
 
-    // 2. Tenta obter sessão
+    // 2. VERIFICAÇÃO PADRÃO (Para quem já estava logado antes)
+    // Só roda se não estivermos no meio do processo acima
     try {
-        const { data, error } = await supabase.auth.getSession();
-        
+        const { data } = await supabase.auth.getSession();
         if (data?.session) {
-            log("✅ Sessão válida!");
+            log("💾 Sessão salva encontrada.");
             handleUserAuth(data.session.user);
-        } else {
-            // Se tem token na URL mas getSession falhou inicialmente,
-            // o Implicit Flow as vezes precisa de um micro-delay para o Supabase processar o hash
-            if (isAuthRedirect) {
-                log("⏳ Processando hash...");
-                setTimeout(async () => {
-                     const retry = await supabase.auth.getSession();
-                     if (retry.data?.session) {
-                         log("✅ Sessão recuperada após delay!");
-                         handleUserAuth(retry.data.session.user);
-                     } else {
-                         log("❌ Falha na validação do token.");
-                         showLoginScreen();
-                         if(DOM.loginMessage) DOM.loginMessage.innerText = "Link expirado ou inválido.";
-                     }
-                }, 1000);
-            } else {
-                log("ℹ️ Visitante não logado.");
-                showLoginScreen();
-            }
+        } else if (!hasToken) {
+            // Só mostra login se NÃO tiver token (visitante normal)
+            log("👤 Nenhum usuário logado.");
+            showLoginScreen();
         }
     } catch (e) {
-        log("Erro fatal: " + e.message);
+        log("Erro init: " + e.message);
         showLoginScreen();
     }
 
-    // 3. Listener de Segurança (Backup)
+    // 3. Listener de Segurança
     supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' && session) {
-            log("📡 Evento: LOGIN");
+            // log("📡 Auth Event: Logged In"); // Comentado para não poluir
             handleUserAuth(session.user);
         } else if (event === 'SIGNED_OUT') {
-            log("📡 Evento: LOGOUT");
+            log("📡 Auth Event: Logged Out");
             showLoginScreen();
         }
     });
@@ -93,18 +109,17 @@ const init = async () => {
     setupEventListeners();
 };
 
+// --- Funções Core ---
 const handleUserAuth = async (user) => {
-    if (state.user?.id === user.id) return; // Evita loop
+    if (state.user?.id === user.id) return;
     state.user = user;
-
-    log(`👤 Olá, ${user.email}`);
     
     // UI Update
     if(DOM.loginOverlay) DOM.loginOverlay.classList.add('hidden');
     if(DOM.appContainer) DOM.appContainer.classList.remove('hidden');
     if(DOM.userEmailDisplay) DOM.userEmailDisplay.innerText = user.email;
 
-    // Remove hash da URL limpo
+    // Remove o hash gigante da URL
     if (window.location.hash) {
         window.history.replaceState(null, null, window.location.pathname);
     }
@@ -117,6 +132,7 @@ const showLoginScreen = () => {
     if(DOM.loginOverlay) DOM.loginOverlay.classList.remove('hidden');
     if(DOM.appContainer) DOM.appContainer.classList.add('hidden');
     if(DOM.loginForm) DOM.loginForm.classList.remove('hidden');
+    if(DOM.loginMessage) DOM.loginMessage.innerText = "";
 };
 
 const loadUserLibrary = async () => {
@@ -135,7 +151,12 @@ const refreshApp = () => {
     populateFilters(state.games);
 
     if (state.games.length === 0) {
-        if(DOM.gamesContainer) DOM.gamesContainer.innerHTML = `<div style="text-align:center; padding:3rem; color:#888;"><h3>Seu Vault está vazio</h3><p>Adicione jogos para começar.</p></div>`;
+        if(DOM.gamesContainer) DOM.gamesContainer.innerHTML = `
+            <div style="text-align:center; padding:3rem; color:#888; border:1px dashed #333; border-radius:10px;">
+                <h3 style="color:white">Vault Vazio</h3>
+                <p>Nenhum jogo encontrado.</p>
+                <button class="btn-primary" style="margin-top:1rem" onclick="alert('Em breve!')">+ Adicionar</button>
+            </div>`;
     } else {
         renderGrid(filtered, state.currentTab === 'sold');
     }
@@ -162,18 +183,13 @@ const setupEventListeners = () => {
             const btn = DOM.loginForm.querySelector('button');
             
             btn.disabled = true;
-            btn.innerText = "Enviando Magic Link...";
-            log("Enviando link...");
-
+            btn.innerText = "Enviando...";
+            
             try {
                 const { error } = await Auth.signIn(email);
                 if (error) throw error;
-                if(DOM.loginMessage) {
-                    DOM.loginMessage.innerHTML = "<span style='color:var(--success)'>✨ Link enviado! Verifique seu app de email.</span>";
-                    log("Link enviado com sucesso!");
-                }
+                if(DOM.loginMessage) DOM.loginMessage.innerHTML = "<span style='color:var(--success)'>✨ Enviado! Verifique seu email.</span>";
             } catch (err) {
-                log("Erro envio: " + err.message);
                 if(DOM.loginMessage) DOM.loginMessage.innerText = "Erro: " + err.message;
             } finally {
                 btn.disabled = false;
@@ -184,7 +200,7 @@ const setupEventListeners = () => {
 
     const btnLogout = document.getElementById('btnLogout');
     if(btnLogout) btnLogout.addEventListener('click', () => {
-        if(confirm("Sair do Vault?")) Auth.signOut();
+        if(confirm("Sair?")) Auth.signOut();
     });
 
     DOM.tabs.forEach(t => t.addEventListener('click', (e) => {
