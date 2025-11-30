@@ -1,29 +1,38 @@
-// Gerenciador de Estado Simples (Pub/Sub)
+// Gerenciador de Estado (Pub/Sub Pattern)
 class Store {
     constructor() {
-        this.state = {
+        this.state = this.getInitialState();
+        this.listeners = [];
+    }
+
+    getInitialState() {
+        return {
             user: null,
             games: [],
             filter: 'collection', // collection | backlog | sold
             searchTerm: ''
         };
-        this.listeners = [];
     }
 
-    // Inscreve uma função para ser chamada quando o estado mudar
     subscribe(listener) {
         this.listeners.push(listener);
+        // Opcional: Chama o listener imediatamente com o estado atual
+        // listener(this.state); 
     }
 
-    // Notifica todos os ouvintes
     notify() {
         this.listeners.forEach(listener => listener(this.state));
     }
 
-    // Atualiza o estado e notifica
     setState(newState) {
         this.state = { ...this.state, ...newState };
-        console.log('State Updated:', this.state); // Debug
+        // console.log('State Updated:', this.state); // Descomente para debug
+        this.notify();
+    }
+    
+    // Reseta o estado (útil para logout)
+    reset() {
+        this.state = this.getInitialState();
         this.notify();
     }
     

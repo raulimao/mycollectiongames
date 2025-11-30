@@ -1,30 +1,27 @@
-// IMPORTANTE: Verifique se suas pastas estão exatamente assim no GitHub.
-// Se os arquivos estiverem soltos na pasta 'js', remova o "services/" e "modules/" dos caminhos abaixo.
 import { supabase, AuthService } from './services/supabase.js';
 import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
 import { renderApp, showToast, toggleModal } from './modules/ui.js';
 
-// --- INICIALIZAÇÃO SEGURA ---
+// --- INICIALIZAÇÃO ---
 const init = async () => {
     console.log("🚀 GameVault Pro Iniciado");
 
-    // 1. Inscrever a UI nas mudanças de estado (Store)
+    // 1. Subscribe UI
     appStore.subscribe(renderApp);
 
-    // 2. Auth Listener (Resolve o bug da Tela Preta/Race Condition)
-    // Ouve quando o usuário conecta ou desconecta
+    // 2. Listener Auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        
-        // REMOVE O LOADER GLOBAL (Tela Preta) assim que tiver resposta
         const loader = document.getElementById('globalLoader');
-        if (loader) loader.classList.add('hidden');
-
+        
         if (session?.user) {
-            handleUserLoggedIn(session.user);
+            await handleUserLoggedIn(session.user);
         } else {
             handleUserLoggedOut();
         }
+        
+        // Remove Loader apenas após processar o estado
+        if (loader) loader.classList.add('hidden');
     });
 
     setupEvents();
@@ -34,18 +31,16 @@ const handleUserLoggedIn = async (user) => {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     
-    // Atualiza Header com dados do usuário
+    // Header Info
     const nameEl = document.getElementById('userName');
     const imgEl = document.getElementById('userAvatar');
     
-    // Tenta pegar nome/foto do Google ou usa fallback
     nameEl.innerText = user.user_metadata.full_name || user.email.split('@')[0];
     if(user.user_metadata.avatar_url) {
         imgEl.src = user.user_metadata.avatar_url;
         imgEl.style.display = 'block';
     }
 
-    // Salva user no estado e carrega jogos
     appStore.setState({ user });
     await loadData();
 };
@@ -53,7 +48,7 @@ const handleUserLoggedIn = async (user) => {
 const handleUserLoggedOut = () => {
     document.getElementById('loginOverlay').classList.remove('hidden');
     document.getElementById('appContainer').classList.add('hidden');
-    appStore.setState({ user: null, games: [] });
+    appStore.reset();
 };
 
 const loadData = async () => {
@@ -62,34 +57,40 @@ const loadData = async () => {
         appStore.setState({ games });
     } catch (err) {
         console.error(err);
-        showToast("Erro ao carregar dados. Tente recarregar.", "error");
+        showToast("Erro ao carregar dados.", "error");
     }
 };
 
 // --- EVENTOS ---
 const setupEvents = () => {
     // Auth
-    document.getElementById('btnGoogle').onclick = async () => {
-        const btn = document.getElementById('btnGoogle');
+    const btnGoogle = document.getElementById('btnGoogle');
+    btnGoogle.onclick = async () => {
         try {
-            btn.innerHTML = '<div class="spinner" style="width:15px;height:15px;border-width:2px"></div> Conectando...';
+            btnGoogle.innerHTML = '<div class="spinner" style="width:15px;height:15px;border-width:2px"></div> Conectando...';
             await AuthService.signInGoogle();
         } catch (e) {
-            btn.innerHTML = '<i class="fa-brands fa-google"></i> Entrar com Google';
+            btnGoogle.innerHTML = '<i class="fa-brands fa-google"></i> Entrar com Google';
             showToast("Erro no Login: " + e.message, "error");
         }
     };
+    
     document.getElementById('btnLogout').onclick = AuthService.signOut;
 
-    // Modal
+    // Modais
     document.getElementById('btnOpenAddModal').onclick = () => openGameModal();
     document.getElementById('btnCloseModal').onclick = () => toggleModal(false);
+    
+    // Fechar modal ao clicar fora
+    document.getElementById('gameModal').onclick = (e) => {
+        if (e.target.id === 'gameModal') toggleModal(false);
+    };
 
-    // Form Submit & Delete
+    // Formulário
     document.getElementById('gameForm').onsubmit = handleFormSubmit;
     document.getElementById('btnDeleteGame').onclick = handleDelete;
 
-    // Tabs (Navegação)
+    // Tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -103,27 +104,30 @@ const setupEvents = () => {
         appStore.setState({ searchTerm: e.target.value });
     };
 
-    // API RAWG (Busca Externa com Debounce)
+    // API RAWG (Debounce)
     let timeout;
+    const apiResults = document.getElementById('apiResults');
+    
     document.getElementById('inputGameName').oninput = (e) => {
         const query = e.target.value;
-        const container = document.getElementById('apiResults');
-
+        
+        clearTimeout(timeout);
+        
         if (query.length < 3) {
-            container.classList.add('hidden');
+            apiResults.classList.add('hidden');
             return;
         }
 
-        clearTimeout(timeout);
         timeout = setTimeout(async () => {
-            container.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Buscando...</div>';
-            container.classList.remove('hidden');
+            apiResults.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Buscando...</div>';
+            apiResults.classList.remove('hidden');
+            
             const results = await GameService.searchRawg(query);
             renderApiResults(results);
         }, 600);
     };
 
-    // Toggle do Campo de Venda
+    // Toggle Status Venda
     document.getElementById('inputStatus').onchange = (e) => {
         const group = document.getElementById('soldGroup');
         if (e.target.value === 'Vendido') group.classList.remove('hidden');
@@ -131,22 +135,27 @@ const setupEvents = () => {
     };
 };
 
-// --- LÓGICA DE FORMULÁRIO ---
+// --- LÓGICA FORMULÁRIO ---
 let editingId = null;
+
+// Disponível globalmente para o onclick do HTML gerado
+window.editGame = (id) => openGameModal(id);
 
 const openGameModal = (gameId = null) => {
     const form = document.getElementById('gameForm');
     form.reset();
     editingId = gameId;
     
-    // Reseta visual
-    document.getElementById('apiResults').classList.add('hidden');
+    const apiContainer = document.getElementById('apiResults');
+    apiContainer.classList.add('hidden');
+    apiContainer.innerHTML = '';
+    
     document.getElementById('soldGroup').classList.add('hidden');
-
-    // Reseta o Select de Plataforma para o padrão (caso tenha sido alterado pela API)
+    
+    // Reset Select Plataforma
     const select = document.getElementById('inputPlatform');
     select.innerHTML = `
-        <option value="">Busque o jogo primeiro...</option>
+        <option value="">Selecione ou Busque...</option>
         <option value="Nintendo Switch">Nintendo Switch</option>
         <option value="PS5">PS5</option>
         <option value="PS4">PS4</option>
@@ -157,20 +166,22 @@ const openGameModal = (gameId = null) => {
     if (gameId) {
         // MODO EDIÇÃO
         const game = appStore.get().games.find(g => g.id === gameId);
+        if (!game) return;
+
         document.getElementById('modalTitle').innerText = "Editar Jogo";
         document.getElementById('btnDeleteGame').classList.remove('hidden');
 
         document.getElementById('inputGameName').value = game.title;
         
-        // Garante que a plataforma do jogo exista no select (caso seja antiga)
+        // Garante option da plataforma
         const optionExists = [...select.options].some(o => o.value === game.platform);
-        if(!optionExists) {
+        if(!optionExists && game.platform) {
             const opt = document.createElement('option');
             opt.value = game.platform;
             opt.innerText = game.platform;
             select.appendChild(opt);
         }
-        document.getElementById('inputPlatform').value = game.platform;
+        select.value = game.platform;
 
         document.getElementById('inputPrice').value = game.price_paid;
         document.getElementById('inputStatus').value = game.status;
@@ -188,9 +199,6 @@ const openGameModal = (gameId = null) => {
     toggleModal(true);
 };
 
-// Hook global para o HTML chamar
-window.editGame = (id) => openGameModal(id);
-
 const handleFormSubmit = async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type="submit"]');
@@ -201,26 +209,26 @@ const handleFormSubmit = async (e) => {
 
     const formData = {
         title: document.getElementById('inputGameName').value,
-        platform: document.getElementById('inputPlatform').value,
+        platform: document.getElementById('inputPlatform').value || 'Outros',
         status: document.getElementById('inputStatus').value,
-        price_paid: parseFloat(document.getElementById('inputPrice').value) || 0,
-        price_sold: parseFloat(document.getElementById('inputSoldPrice').value) || 0,
+        price_paid: document.getElementById('inputPrice').value,
+        price_sold: document.getElementById('inputSoldPrice').value,
         image_url: document.getElementById('inputImage').value
     };
 
     try {
         if (editingId) {
             await GameService.updateGame(editingId, formData);
-            showToast("Jogo atualizado com sucesso!");
+            showToast("Jogo atualizado!");
         } else {
             await GameService.addGame(formData);
-            showToast("Jogo adicionado à coleção!");
+            showToast("Jogo adicionado!");
         }
         toggleModal(false);
-        await loadData(); // Recarrega para garantir sincronia
+        await loadData();
     } catch (err) {
         console.error(err);
-        showToast("Erro ao salvar: " + err.message, "error");
+        showToast("Erro: " + err.message, "error");
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
@@ -228,7 +236,7 @@ const handleFormSubmit = async (e) => {
 };
 
 const handleDelete = async () => {
-    if (confirm("Tem certeza que deseja excluir este jogo permanentemente?")) {
+    if (confirm("Excluir este jogo permanentemente?")) {
         try {
             await GameService.deleteGame(editingId);
             showToast("Jogo excluído.");
@@ -240,17 +248,15 @@ const handleDelete = async () => {
     }
 };
 
-// --- LÓGICA DA API RAWG & PLATAFORMAS DINÂMICAS ---
+// --- RENDER API RESULTS ---
 const renderApiResults = (games) => {
     const container = document.getElementById('apiResults');
     container.innerHTML = '';
     
     if(!games || games.length === 0) {
-        container.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Nenhum jogo encontrado</div>';
+        container.innerHTML = '<div style="padding:10px;text-align:center;color:#888">Nenhum resultado</div>';
         return;
     }
-
-    container.classList.remove('hidden');
 
     games.forEach(g => {
         const item = document.createElement('div');
@@ -258,7 +264,7 @@ const renderApiResults = (games) => {
         const year = g.released ? g.released.split('-')[0] : 'N/A';
         
         item.innerHTML = `
-            <img src="${g.background_image || ''}"> 
+            <img src="${g.background_image || ''}" alt="Cover"> 
             <div class="api-info">
                 <strong>${g.name}</strong>
                 <small>${year}</small>
@@ -270,31 +276,25 @@ const renderApiResults = (games) => {
 };
 
 const selectApiGame = (game) => {
-    // 1. Preenche Nome e Imagem
     document.getElementById('inputGameName').value = game.name;
     document.getElementById('inputImage').value = game.background_image || '';
     
-    // 2. Preenchimento Dinâmico de Plataformas
     const select = document.getElementById('inputPlatform');
-    select.innerHTML = ''; // Limpa opções antigas
+    select.innerHTML = ''; 
 
     if (game.platforms && game.platforms.length > 0) {
-        // Cria uma opção para cada plataforma retornada pela API
         game.platforms.forEach(p => {
             const option = document.createElement('option');
-            option.value = p.platform.name; // ex: "PlayStation 5"
+            option.value = p.platform.name;
             option.innerText = p.platform.name;
             select.appendChild(option);
         });
-        select.selectedIndex = 0; // Seleciona a primeira
+        select.selectedIndex = 0;
     } else {
-        // Fallback se a API não trouxer plataformas
-        select.innerHTML = '<option value="Outros">Outros / Desconhecido</option>';
+        select.innerHTML = '<option value="Outros">Outros</option>';
     }
 
     document.getElementById('apiResults').classList.add('hidden');
-    showToast(`Dados de "${game.name}" carregados!`);
 };
 
-// Start
 document.addEventListener('DOMContentLoaded', init);
