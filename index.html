@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameVault | Gerenciador de Coleção</title>
+    <title>GameVault | Gerenciador Premium</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
 </head>
@@ -17,16 +18,22 @@
 
     <div class="bg-grid"></div>
 
-    <div id="loginOverlay" class="login-overlay">
+    <div id="globalLoader" class="login-overlay" style="z-index: 10000; background: #121212;">
+        <div class="spinner"></div>
+    </div>
+
+    <div id="loginOverlay" class="login-overlay hidden">
         <div class="login-content glass-panel">
             <div class="logo-large">
                 <span class="icon-pulse">👾</span>
                 <h1>GAME<span class="neon-text">VAULT</span></h1>
             </div>
-            <p class="login-subtitle">Entre para gerenciar sua coleção</p>
+            <p class="login-subtitle">Gerencie sua coleção como um profissional</p>
+            
             <button id="btnGoogle" class="btn-social google">
                 <i class="fa-brands fa-google"></i> Entrar com Google
             </button>
+            
             <p id="loginMessage" class="status-msg"></p>
         </div>
     </div>
@@ -35,15 +42,21 @@
         <header class="glass-header">
             <div class="logo">
                 <span class="icon">👾</span>
-                <h1>VAULT</h1>
+                <h1>VAULT <small style="font-size:0.4em; color:var(--primary)">PRO</small></h1>
             </div>
             <div class="user-profile">
-                <span id="userName" class="user-name">...</span>
+                <img id="userAvatar" class="avatar-img" src="" alt="User" style="display:none">
+                <span id="userName" class="user-name">Carregando...</span>
                 <button id="btnLogout" class="btn-small">SAIR</button>
             </div>
         </header>
 
-        <section id="kpi-container" class="kpi-grid"></section>
+        <section class="dashboard-grid">
+            <div id="kpi-container" class="kpi-group"></div>
+            <div class="chart-container glass-panel">
+                <canvas id="collectionChart"></canvas>
+            </div>
+        </section>
 
         <section class="controls-panel glass-panel">
             <div class="tabs-group">
@@ -52,8 +65,13 @@
                 <button class="tab-btn" data-tab="sold">Vendidos</button>
             </div>
             <div class="filters-group">
-                <input type="text" id="searchInput" placeholder="Buscar jogo...">
-                <button id="btnOpenAddModal" class="btn-primary">+ ADICIONAR</button>
+                <div class="search-box">
+                    <i class="fa-solid fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Buscar na coleção...">
+                </div>
+                <button id="btnOpenAddModal" class="btn-primary">
+                    <i class="fa-solid fa-plus"></i> NOVO JOGO
+                </button>
             </div>
         </section>
 
@@ -63,7 +81,7 @@
     <div id="gameModal" class="modal-overlay hidden">
         <div class="modal-content glass-panel">
             <div class="modal-header">
-                <h2 id="modalTitle">Novo Jogo</h2>
+                <h2 id="modalTitle">Adicionar Jogo</h2>
                 <button id="btnCloseModal" class="close-btn">&times;</button>
             </div>
             
@@ -71,8 +89,8 @@
                 <input type="hidden" id="editGameId">
                 
                 <div class="input-group">
-                    <label>Nome do Jogo (Busca Automática)</label>
-                    <input type="text" id="inputGameName" placeholder="Digite para buscar..." autocomplete="off" required>
+                    <label>Nome do Jogo</label>
+                    <input type="text" id="inputGameName" placeholder="Digite para buscar automaticamente..." autocomplete="off" required>
                     <div id="apiResults" class="api-results hidden"></div>
                 </div>
 
@@ -86,6 +104,7 @@
                             <option value="PS4">PS4</option>
                             <option value="Xbox Series">Xbox Series</option>
                             <option value="PC">PC</option>
+                            <option value="Retrô">Retrô</option>
                         </select>
                     </div>
                     <div class="input-group">
@@ -96,23 +115,29 @@
 
                 <div class="row">
                     <div class="input-group">
-                        <label>Status</label>
+                        <label>Status Atual</label>
                         <select id="inputStatus" required>
-                            <option value="Coleção">Na Coleção</option>
-                            <option value="Backlog">Backlog</option>
-                            <option value="Jogando">Jogando</option>
+                            <option value="Coleção">Na Estante (Coleção)</option>
+                            <option value="Backlog">Backlog (Não joguei)</option>
+                            <option value="Jogando">Jogando Agora</option>
                             <option value="Zerado">Zerado</option>
-                            <option value="Platinado">Platinado</option>
-                            <option value="À venda">À venda</option>
-                            <option value="Vendido">Vendido</option>
+                            <option value="Platinado">Platinado (100%)</option>
+                            <option value="À venda">Colocado à Venda</option>
+                            <option value="Vendido">Já Vendido</option>
                         </select>
+                    </div>
+                    
+                    <div class="input-group hidden" id="soldGroup">
+                        <label>Valor de Venda (R$)</label>
+                        <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
                 <input type="hidden" id="inputImage">
 
                 <div class="modal-actions">
-                    <button type="submit" class="btn-primary">Salvar</button>
+                    <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
+                    <button type="submit" class="btn-primary">Salvar Jogo</button>
                 </div>
             </form>
         </div>
