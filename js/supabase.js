@@ -5,41 +5,57 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 export const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 export const Auth = {
-    // LOGIN SOCIAL (GOOGLE/GITHUB)
     signInWithProvider: async (provider) => {
-        // Redireciona para a URL atual (onde o app está hospedado)
         const redirectTo = window.location.origin + window.location.pathname;
-        
-        return await supabase.auth.signInWithOAuth({
-            provider: provider,
-            options: {
-                redirectTo: redirectTo
-            }
-        });
+        return await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
     },
-    
     signOut: async () => {
         await supabase.auth.signOut();
         window.location.reload();
     },
-
-    getSession: async () => {
-        return await supabase.auth.getSession();
-    }
+    getSession: async () => await supabase.auth.getSession()
 };
 
 export const DB = {
     getGames: async () => {
-        const { data, error } = await supabase
-            .from('games')
-            .select('*')
-            .order('created_at', { ascending: false });
-        if (error) return [];
-        return data;
+        const { data, error } = await supabase.from('games').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
     },
     
-    // (Opcional por enquanto) Adicionar jogo
+    // CRIAR
     addGame: async (gameData, userId) => {
-        // Lógica de insert...
+        const payload = sanitizeGameData(gameData, userId);
+        const { data, error } = await supabase.from('games').insert([payload]).select();
+        if (error) throw error;
+        return data;
+    },
+
+    // ATUALIZAR
+    updateGame: async (id, gameData) => {
+        const payload = sanitizeGameData(gameData);
+        // Não atualizamos user_id na edição por segurança
+        delete payload.user_id; 
+        const { data, error } = await supabase.from('games').update(payload).eq('id', id).select();
+        if (error) throw error;
+        return data;
+    },
+
+    // DELETAR
+    deleteGame: async (id) => {
+        const { error } = await supabase.from('games').delete().eq('id', id);
+        if (error) throw error;
+        return true;
     }
+};
+
+// Ajuda a limpar os números antes de enviar
+const sanitizeGameData = (data, userId) => {
+    return {
+        ...data,
+        preco: parseFloat(data.preco || 0),
+        vendido: data.vendido ? parseFloat(data.vendido) : null,
+        lucro: data.lucro ? parseFloat(data.lucro) : null,
+        user_id: userId ? userId : undefined
+    };
 };

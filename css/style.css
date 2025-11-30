@@ -69,3 +69,40 @@ body {
     .filters-group { width: 100%; flex-direction: column; }
     .filters-group input, .filters-group select { width: 100%; }
 }
+
+/* MODAL */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+    z-index: 3000; display: flex; justify-content: center; align-items: center;
+}
+.modal-content {
+    width: 95%; max-width: 500px; padding: 2rem;
+    background: #18181b; border: 1px solid var(--primary);
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    max-height: 90vh; overflow-y: auto;
+}
+.modal-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.close-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+
+/* FORM & API RESULTS */
+.input-group { margin-bottom: 15px; position: relative; }
+.input-group label { display: block; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 5px; }
+.row { display: flex; gap: 15px; }
+.row .input-group { flex: 1; }
+
+.api-results {
+    position: absolute; top: 100%; left: 0; width: 100%;
+    background: #222; border: 1px solid #444; z-index: 10;
+    max-height: 200px; overflow-y: auto;
+    border-radius: 0 0 8px 8px;
+}
+.api-item {
+    padding: 10px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; border-bottom: 1px solid #333; transition: 0.2s;
+}
+.api-item:hover { background: var(--primary); color: white; }
+.api-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; }
+
+.modal-actions { display: flex; justify-content: space-between; margin-top: 20px; }
+.btn-danger { background: #ff4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
