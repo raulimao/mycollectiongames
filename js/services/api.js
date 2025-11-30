@@ -1,7 +1,6 @@
 import { supabase } from './supabase.js';
 
-// 🔴 SUBSTITUA ESTA CHAVE PELA SUA CHAVE NOVA DO RAWG.IO
-// A chave antiga foi bloqueada. Pegue uma free em: https://rawg.io/apidocs
+// Sua chave válida
 const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6'; 
 
 export const GameService = {
@@ -55,16 +54,12 @@ export const GameService = {
     async searchRawg(query) {
         if (!query || query.length < 3) return [];
         
-        // Verifica se a chave foi configurada
-        if (RAWG_API_KEY === 'b435fbadf8c24701adce7ef05814f0d6') {
-            throw new Error("Chave de API inválida. Configure no arquivo api.js");
-        }
+        // --- CORREÇÃO: Removido o bloco IF que travava sua chave ---
         
         const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
         const res = await fetch(url);
         
         if (!res.ok) {
-            // Lança o erro para o main.js mostrar o toast vermelho
             throw new Error(`Erro API RAWG: ${res.status}`);
         }
         
