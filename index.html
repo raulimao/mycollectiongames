@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
@@ -47,6 +48,7 @@
         <section class="controls-panel glass-panel">
             <div class="tabs-group">
                 <button class="tab-btn active" data-tab="collection">Coleção</button>
+                <button class="tab-btn" data-tab="backlog">Backlog</button>
                 <button class="tab-btn" data-tab="sold">Vendidos</button>
             </div>
             <div class="filters-group">
@@ -79,32 +81,37 @@
                         <label>Plataforma</label>
                         <select id="inputPlatform" required>
                             <option value="">Selecione...</option>
-                            </select>
+                            <option value="Nintendo Switch">Nintendo Switch</option>
+                            <option value="PS5">PS5</option>
+                            <option value="PS4">PS4</option>
+                            <option value="Xbox Series">Xbox Series</option>
+                            <option value="PC">PC</option>
+                        </select>
                     </div>
                     <div class="input-group">
                         <label>Preço Pago (R$)</label>
-                        <input type="number" id="inputPrice" step="0.01" placeholder="0.00" required>
+                        <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
                 <div class="row">
                     <div class="input-group">
                         <label>Status</label>
-                        <select id="inputStatus">
+                        <select id="inputStatus" required>
                             <option value="Coleção">Na Coleção</option>
+                            <option value="Backlog">Backlog</option>
+                            <option value="Jogando">Jogando</option>
+                            <option value="Zerado">Zerado</option>
+                            <option value="Platinado">Platinado</option>
                             <option value="À venda">À venda</option>
                             <option value="Vendido">Vendido</option>
-                            <option value="Importado">Importado</option>
                         </select>
-                    </div>
-                    <div class="input-group hidden" id="soldGroup">
-                        <label>Valor Venda (R$)</label>
-                        <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
-                <input type="hidden" id="inputImage"> <div class="modal-actions">
-                    <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
+                <input type="hidden" id="inputImage">
+
+                <div class="modal-actions">
                     <button type="submit" class="btn-primary">Salvar</button>
                 </div>
             </form>
@@ -113,7 +120,6 @@
 
     <div id="toastContainer" class="toast-container"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
