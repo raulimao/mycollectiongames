@@ -18,7 +18,7 @@ export const AuthService = {
             provider: 'google',
             options: { 
                 redirectTo: redirectTo,
-                queryParams: { access_type: 'offline', prompt: 'consent' }
+                queryParams: { access_type: 'offline' }
             }
         });
         
