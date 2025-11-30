@@ -3,76 +3,137 @@ import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
 import { renderApp, showToast, toggleModal } from './modules/ui.js';
 
+// --- INICIALIZAÇÃO ---
 const init = async () => {
     console.log("🚀 GameVault Pro Iniciado");
     appStore.subscribe(renderApp);
 
-    // 1. VERIFICAÇÃO DE ROTA (Link Compartilhado?)
+    // 1. VERIFICAÇÃO DE ROTA (Link Compartilhado via Nickname)
     const urlParams = new URLSearchParams(window.location.search);
-    const sharedProfileId = urlParams.get('profile');
+    const sharedNick = urlParams.get('u'); // Agora usamos 'u' de user/url
 
-    if (sharedProfileId) {
-        // --- MODO VISITANTE (LINK COMPARTILHADO) ---
-        console.log("👀 Visitando perfil:", sharedProfileId);
-        appStore.setState({ isSharedMode: true });
-        
-        // Esconde telas de login e carrega app direto
-        document.getElementById('globalLoader').classList.add('hidden');
-        document.getElementById('loginOverlay').classList.add('hidden');
-        document.getElementById('appContainer').classList.remove('hidden');
-
-        // Ajusta Header
-        document.querySelector('.user-profile').innerHTML = `
-            <a href="index.html" class="btn-small" style="border-color:var(--primary); color:var(--primary)">
-                <i class="fa-solid fa-right-to-bracket"></i> MEU LOGIN
-            </a>
-        `;
-        document.querySelector('.logo h1').innerHTML = `VAULT <small style="font-size:0.4em; color:var(--success)">VISITANTE</small>`;
-
-        await loadSharedData(sharedProfileId);
-
+    if (sharedNick) {
+        // --- MODO VISITANTE ---
+        console.log("👀 Visitando Gamertag:", sharedNick);
+        handleVisitorMode(sharedNick);
     } else {
-        // --- MODO NORMAL (LOGIN) ---
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            const loader = document.getElementById('globalLoader');
-            try {
-                if (session?.user) {
-                    if (loader) loader.classList.add('hidden');
-                    await handleUserLoggedIn(session.user);
-                } else {
-                    handleUserLoggedOut();
-                    if (loader) loader.classList.add('hidden');
-                }
-            } catch (error) {
-                console.error("Erro crítico:", error);
-                if (loader) loader.classList.add('hidden');
-            }
-        });
+        // --- MODO LOGIN ---
+        checkAuthStatus();
     }
 
     setupEvents();
 };
 
-// --- MODO LOGIN ---
+const handleVisitorMode = async (nickname) => {
+    // UI Setup para Visitante
+    document.getElementById('globalLoader').classList.remove('hidden');
+    
+    // Tenta achar o ID pelo Nickname
+    const userId = await GameService.getUserIdByNickname(nickname);
+    
+    document.getElementById('globalLoader').classList.add('hidden');
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('appContainer').classList.remove('hidden');
+
+    if (userId) {
+        appStore.setState({ isSharedMode: true, sharedProfileName: nickname });
+        
+        // Header Visitante
+        document.querySelector('.user-profile').innerHTML = `
+            <a href="index.html" class="btn-small" style="border-color:var(--primary); color:var(--primary)">
+                <i class="fa-solid fa-power-off"></i> MEU LOGIN
+            </a>
+        `;
+        // Título Personalizado
+        document.querySelector('.logo h1').innerHTML = `VAULT <small style="font-size:0.4em; color:var(--secondary)">// ${nickname.toUpperCase()}</small>`;
+        
+        await loadSharedData(userId);
+    } else {
+        // Perfil não encontrado
+        document.getElementById('gamesContainer').innerHTML = `
+            <div style="grid-column:1/-1; text-align:center; padding:50px;">
+                <h2 style="color:var(--danger)">404 // SYSTEM ERROR</h2>
+                <p>O Gamertag <strong>"${nickname}"</strong> não foi encontrado.</p>
+                <a href="index.html" class="btn-primary" style="display:inline-flex; margin-top:20px;">VOLTAR AO INÍCIO</a>
+            </div>
+        `;
+    }
+};
+
+const checkAuthStatus = () => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const loader = document.getElementById('globalLoader');
+        try {
+            if (session?.user) {
+                if (loader) loader.classList.add('hidden');
+                await handleUserLoggedIn(session.user);
+            } else {
+                handleUserLoggedOut();
+                if (loader) loader.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error("Erro crítico:", error);
+            if (loader) loader.classList.add('hidden');
+        }
+    });
+};
+
 const handleUserLoggedIn = async (user) => {
+    // 1. Verifica se já tem Nickname
+    const profile = await GameService.getMyProfile();
+    
+    if (!profile) {
+        // Se não tem, abre modal OBRIGATÓRIO e para o fluxo
+        document.getElementById('loginOverlay').classList.add('hidden');
+        const nickModal = document.getElementById('nicknameModal');
+        nickModal.classList.remove('hidden');
+        
+        // Listener do Form de Nickname
+        document.getElementById('nicknameForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('inputNickname');
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            
+            try {
+                btn.innerText = "REGISTRANDO..."; btn.disabled = true;
+                const newProfile = await GameService.createProfile(input.value);
+                
+                // Sucesso!
+                nickModal.classList.add('hidden');
+                finishLoginSetup(user, newProfile.nickname);
+                showToast(`Bem-vindo, ${newProfile.nickname}!`, "success");
+            } catch (err) {
+                showToast(err.message, "error");
+                btn.innerText = originalText; btn.disabled = false;
+            }
+        };
+        return; // Para aqui até o usuário criar o nick
+    }
+
+    finishLoginSetup(user, profile.nickname);
+};
+
+const finishLoginSetup = async (user, nickname) => {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
     
     const nameEl = document.getElementById('userName');
     const imgEl = document.getElementById('userAvatar');
-    const fullName = user.user_metadata?.full_name || user.email?.split('@')[0];
     
-    if (nameEl) nameEl.innerText = fullName;
-    if (imgEl && user.user_metadata?.avatar_url) {
+    // Prioriza o Nickname no display
+    nameEl.innerText = nickname.toUpperCase();
+    nameEl.style.fontFamily = 'var(--font-num)';
+    nameEl.style.color = 'var(--primary)';
+    
+    if (user.user_metadata?.avatar_url) {
         imgEl.src = user.user_metadata.avatar_url;
         imgEl.style.display = 'block';
     }
 
-    // Adiciona botão de compartilhar no Header
-    addShareButton(user.id);
-
+    addShareButton(nickname); // Passa o nickname, não o ID
     appStore.setState({ user, isSharedMode: false });
-    loadData(); 
+    loadData();
 };
 
 const handleUserLoggedOut = () => {
@@ -81,9 +142,8 @@ const handleUserLoggedOut = () => {
     appStore.reset();
 };
 
-const addShareButton = (userId) => {
+const addShareButton = (nickname) => {
     const profileDiv = document.querySelector('.user-profile');
-    // Verifica se já existe para não duplicar
     if(document.getElementById('btnShareProfile')) return;
 
     const btnShare = document.createElement('button');
@@ -92,26 +152,26 @@ const addShareButton = (userId) => {
     btnShare.style.marginRight = '10px';
     btnShare.style.borderColor = 'var(--secondary)';
     btnShare.style.color = 'var(--secondary)';
-    btnShare.innerHTML = '<i class="fa-solid fa-share-nodes"></i>';
-    btnShare.title = "Copiar link do meu perfil";
+    btnShare.innerHTML = '<i class="fa-solid fa-share-nodes"></i> LINK';
+    btnShare.title = "Copiar link público";
     
     btnShare.onclick = () => {
-        const url = `${window.location.origin}${window.location.pathname}?profile=${userId}`;
+        // Gera URL limpa com nickname
+        const url = `${window.location.origin}${window.location.pathname}?u=${nickname}`;
         navigator.clipboard.writeText(url).then(() => {
-            showToast("Link do perfil copiado!", "success");
+            showToast("Link público copiado!", "success");
         });
     };
 
     profileDiv.prepend(btnShare);
 };
 
-// --- DATA LOADERS ---
 const loadData = async () => {
     try {
         const games = await GameService.fetchGames();
         appStore.setState({ games });
     } catch (err) {
-        console.error(err);
+        console.error("Erro:", err);
         showToast("Erro ao carregar dados.", "error");
     }
 };
@@ -120,24 +180,20 @@ const loadSharedData = async (userId) => {
     try {
         const games = await GameService.fetchSharedGames(userId);
         appStore.setState({ games });
-        showToast("Visualizando coleção compartilhada");
+        showToast("Visualizando coleção pública");
     } catch (err) {
         console.error(err);
-        showToast("Perfil não encontrado ou privado.", "error");
+        showToast("Erro ao carregar perfil.", "error");
     }
 };
 
 // --- EVENTS ---
 const setupEvents = () => {
-    const safeClick = (id, fn) => {
-        const el = document.getElementById(id);
-        if (el) el.onclick = fn;
-    };
+    const safeClick = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
 
     safeClick('btnGoogle', async () => await AuthService.signInGoogle());
     safeClick('btnLogout', AuthService.signOut);
     
-    // Só ativa eventos de edição se NÃO for compartilhado
     if (!appStore.get().isSharedMode) {
         safeClick('btnOpenAddModal', () => openGameModal());
         safeClick('btnDeleteGame', handleDelete);
@@ -149,7 +205,6 @@ const setupEvents = () => {
     const gameModal = document.getElementById('gameModal');
     if (gameModal) gameModal.onclick = (e) => { if (e.target.id === 'gameModal') toggleModal(false); };
 
-    // Tabs funcionam em ambos os modos
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -161,7 +216,6 @@ const setupEvents = () => {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.oninput = (e) => appStore.setState({ searchTerm: e.target.value });
 
-    // API Search Logic
     let timeout;
     const apiResults = document.getElementById('apiResults');
     const inputGameName = document.getElementById('inputGameName');
@@ -197,12 +251,10 @@ const setupEvents = () => {
     }
 };
 
-// Modais e Forms helpers (Mantidos igual, mas só chamados se isSharedMode=false)
 let editingId = null;
 window.editGame = (id) => openGameModal(id);
 
 const openGameModal = (gameId = null) => {
-    // Se for compartilhado, bloqueia
     if(appStore.get().isSharedMode) return;
 
     const form = document.getElementById('gameForm');
