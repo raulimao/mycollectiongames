@@ -3,148 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Collection SaaS</title>
+    <title>GameVault SaaS | Dashboard</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
 </head>
 <body>
 
-    <div id="loginOverlay" class="login-overlay">
-        <div class="login-card glass-panel">
-            <div class="login-header">
-                <h2>Bem-vindo</h2>
-                <p>Gerencie sua coleção na nuvem.<br>Digite seu e-mail para entrar.</p>
+    <div class="bg-grid"></div>
+
+    <div id="loginOverlay" class="login-overlay glass-panel">
+        <div class="login-content">
+            <div class="logo-large">
+                <span class="icon-pulse">👾</span>
+                <h1>GAME<span class="neon-text">VAULT</span></h1>
             </div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <input type="email" id="emailInput" placeholder="seu@email.com" required>
+            <p class="login-subtitle">Gerenciador de Coleção Premium</p>
+            
+            <form id="loginForm" class="login-form">
+                <div class="input-group">
+                    <input type="email" id="emailInput" placeholder="Digite seu e-mail de acesso" required>
                 </div>
-                <button type="submit" class="btn-primary full-width" id="btnLogin">
-                    Receber Link Mágico ✨
+                <button type="submit" class="btn-primary full-width">
+                    <span id="btnText">INICIAR SESSÃO</span>
+                    <div id="loader" class="spinner hidden"></div>
                 </button>
             </form>
-            <div id="loginMessage" class="login-msg hidden"></div>
+            <p id="loginMessage" class="status-msg"></p>
         </div>
     </div>
 
-    <div class="app-container">
-        <header class="dashboard-header">
-            <div class="logo-area">
-                <h1>MY<span class="highlight">COLLECTION</span></h1>
-                <p class="subtitle">Cloud Edition</p>
+    <div id="appContainer" class="app-container hidden">
+        <header class="glass-header">
+            <div class="logo">
+                <span class="icon">👾</span>
+                <h1>GAME<span class="neon-text">VAULT</span></h1>
             </div>
-            
-            <div class="user-controls hidden" id="userArea">
-                <span id="userEmail" class="user-email">Carregando...</span>
-                <button id="btnLogout" class="btn-secondary btn-small">Sair</button>
+            <div class="user-profile">
+                <span id="userEmailDisplay" class="user-email">...</span>
+                <button id="btnLogout" class="btn-small">SAIR</button>
             </div>
-
-            <div class="kpi-grid" id="kpi-container">
-                </div>
         </header>
 
-        <section class="controls-section glass-panel">
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="collection">Minha Coleção</button>
-                <button class="tab-btn" data-tab="sold">Histórico de Vendas</button>
-            </div>
+        <section id="kpi-container" class="kpi-grid">
+            </section>
 
-            <div class="filters">
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="Buscar jogo...">
-                    <span class="search-icon">🔍</span>
+        <section class="controls-panel glass-panel">
+            <div class="tabs-group">
+                <button class="tab-btn active" data-tab="collection">Minha Coleção</button>
+                <button class="tab-btn" data-tab="sold">Vendas & Lucro</button>
+            </div>
+            
+            <div class="filters-group">
+                <div class="input-wrapper">
+                    <input type="text" id="searchInput" placeholder="Buscar no Vault...">
                 </div>
-                <select id="platformFilter" class="platform-select">
+                <select id="platformSelect">
                     <option value="all">Todas as Plataformas</option>
                 </select>
+                <button id="btnNewGame" class="btn-primary">+ NOVO JOGO</button>
             </div>
         </section>
 
-        <main class="games-grid" id="gamesContainer">
+        <main id="gamesContainer" class="games-grid">
             </main>
     </div>
-
-    <button class="fab-btn" id="btnAddGame" title="Adicionar Novo Jogo">+</button>
-
-    <div class="modal-overlay hidden" id="gameModal">
-        <div class="modal-content glass-panel">
-            <div class="modal-header">
-                <h2 id="modalTitle">Novo Jogo</h2>
-                <button class="close-modal" id="btnCloseModal">&times;</button>
-            </div>
-            <form id="gameForm">
-                <input type="hidden" id="gameId">
-                
-                <div class="form-group">
-                    <label>Nome do Jogo *</label>
-                    <input type="text" id="inputName" required placeholder="Ex: God of War">
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Plataforma *</label>
-                        <select id="inputPlatform" required>
-                            <option value="Nintendo Switch">Nintendo Switch</option>
-                            <option value="Playstation 5">Playstation 5</option>
-                            <option value="Playstation 4">Playstation 4</option>
-                            <option value="Playstation 3">Playstation 3</option>
-                            <option value="Playstation 2">Playstation 2</option>
-                            <option value="Xbox Series S/X">Xbox Series S/X</option>
-                            <option value="PC">PC</option>
-                            <option value="Outros">Outros</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Tipo</label>
-                        <select id="inputType">
-                            <option value="Jogo">Jogo</option>
-                            <option value="Console">Console</option>
-                            <option value="Acessório">Acessório</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Preço Pago (R$)</label>
-                        <input type="number" step="0.01" id="inputPrice" placeholder="0.00">
-                    </div>
-                    <div class="form-group">
-                        <label>Status</label>
-                        <select id="inputStatus">
-                            <option value="Coleção">Na Coleção</option>
-                            <option value="À venda">À venda</option>
-                            <option value="Importado">Importado/Trânsito</option>
-                            <option value="Vendido">Vendido</option>
-                            <option value="Desejo">Lista de Desejos</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-row hidden" id="soldFields">
-                    <div class="form-group">
-                        <label>Valor de Venda (R$)</label>
-                        <input type="number" step="0.01" id="inputSoldPrice" placeholder="0.00">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>URL da Imagem (Opcional)</label>
-                    <input type="url" id="inputImage" placeholder="https://...">
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn-secondary" id="btnCancel">Cancelar</button>
-                    <button type="submit" class="btn-primary">Salvar na Nuvem</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="toastContainer" class="toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script type="module" src="js/main.js"></script>

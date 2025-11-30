@@ -1,76 +1,71 @@
-/* --- CSS Mobile Fixes --- */
-
-/* 1. Botões de Ação (Editar/Excluir) sempre visíveis no mobile */
-@media (hover: none) {
-    .card-actions {
-        opacity: 1 !important; /* Força visibilidade sem hover */
-        background: rgba(0,0,0,0.5); /* Fundo escuro para destacar */
-        border-radius: 20px;
-        padding: 4px;
-        top: 8px;
-        right: 8px;
-    }
+:root {
+    --bg-dark: #121212;
+    --bg-card: rgba(25, 25, 25, 0.6);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+    
+    --primary: #bc13fe; /* Roxo */
+    --success: #00ff41; /* Verde */
+    --text-main: #ffffff;
+    --text-muted: #a0a0a0;
+    
+    --font-ui: 'Inter', sans-serif;
+    --font-num: 'Orbitron', sans-serif;
 }
 
-/* 2. Ajustes de Layout Mobile */
-@media (max-width: 600px) {
-    /* Login ocupa menos espaço e fonte menor */
-    .login-card {
-        padding: 1.5rem;
-        width: 95%;
-    }
-    .login-header h2 { font-size: 1.5rem; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* Filtros empilhados */
-    .controls-section {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.8rem;
-    }
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+}
 
-    .tabs {
-        width: 100%;
-        justify-content: space-between;
-    }
-    
-    .tab-btn {
-        flex: 1;
-        text-align: center;
-        font-size: 0.8rem;
-        padding: 0.6rem;
-    }
+/* Background Tech */
+.bg-grid {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    z-index: -1;
+}
 
-    .filters {
-        flex-direction: column;
-    }
+.app-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
 
-    .search-box, .platform-select {
-        width: 100%;
-    }
+/* Header */
+.glass-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 0;
+    margin-bottom: 40px;
+    border-bottom: var(--glass-border);
+}
 
-    /* Grid de Jogos em 1 coluna */
-    .games-grid {
-        grid-template-columns: 1fr; /* 1 card por linha */
-    }
-    
-    /* Botão flutuante não atrapalhar scroll */
-    .fab-btn {
-        bottom: 1.5rem;
-        right: 1.5rem;
-        width: 50px;
-        height: 50px;
-        font-size: 1.5rem;
-    }
-    
-    /* Modal ocupa tela toda no celular */
-    .modal-content {
-        width: 100%;
-        height: 100%;
-        max-height: 100vh;
-        border-radius: 0;
-        padding: 1.5rem;
-    }
-    .form-row {
-        grid-template-columns: 1fr; /* Inputs um embaixo do outro */
-    }
+.logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; }
+.neon-text { color: var(--primary); text-shadow: 0 0 10px rgba(188, 19, 254, 0.5); }
+
+.user-profile { display: flex; align-items: center; gap: 10px; }
+.avatar { 
+    width: 40px; height: 40px; background: #333; border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; font-weight: bold;
+    border: 1px solid var(--primary);
+}
+
+/* Layout Grid */
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 30px;
+}
+
+@media (max-width: 768px) {
+    .controls-panel { flex-direction: column; gap: 15px; }
+    .filters-group { width: 100%; flex-direction: column; }
+    .filters-group input, .filters-group select { width: 100%; }
 }
