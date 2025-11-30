@@ -3,30 +3,57 @@ import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
 import { renderApp, showToast, toggleModal } from './modules/ui.js';
 
-// --- INICIALIZAÇÃO ---
 const init = async () => {
     console.log("🚀 GameVault Pro Iniciado");
     appStore.subscribe(renderApp);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        const loader = document.getElementById('globalLoader');
-        try {
-            if (session?.user) {
-                if (loader) loader.classList.add('hidden');
-                await handleUserLoggedIn(session.user);
-            } else {
-                handleUserLoggedOut();
+    // 1. VERIFICAÇÃO DE ROTA (Link Compartilhado?)
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedProfileId = urlParams.get('profile');
+
+    if (sharedProfileId) {
+        // --- MODO VISITANTE (LINK COMPARTILHADO) ---
+        console.log("👀 Visitando perfil:", sharedProfileId);
+        appStore.setState({ isSharedMode: true });
+        
+        // Esconde telas de login e carrega app direto
+        document.getElementById('globalLoader').classList.add('hidden');
+        document.getElementById('loginOverlay').classList.add('hidden');
+        document.getElementById('appContainer').classList.remove('hidden');
+
+        // Ajusta Header
+        document.querySelector('.user-profile').innerHTML = `
+            <a href="index.html" class="btn-small" style="border-color:var(--primary); color:var(--primary)">
+                <i class="fa-solid fa-right-to-bracket"></i> MEU LOGIN
+            </a>
+        `;
+        document.querySelector('.logo h1').innerHTML = `VAULT <small style="font-size:0.4em; color:var(--success)">VISITANTE</small>`;
+
+        await loadSharedData(sharedProfileId);
+
+    } else {
+        // --- MODO NORMAL (LOGIN) ---
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            const loader = document.getElementById('globalLoader');
+            try {
+                if (session?.user) {
+                    if (loader) loader.classList.add('hidden');
+                    await handleUserLoggedIn(session.user);
+                } else {
+                    handleUserLoggedOut();
+                    if (loader) loader.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error("Erro crítico:", error);
                 if (loader) loader.classList.add('hidden');
             }
-        } catch (error) {
-            console.error("Erro crítico:", error);
-            if (loader) loader.classList.add('hidden');
-        }
-    });
+        });
+    }
 
     setupEvents();
 };
 
+// --- MODO LOGIN ---
 const handleUserLoggedIn = async (user) => {
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('appContainer').classList.remove('hidden');
@@ -41,7 +68,10 @@ const handleUserLoggedIn = async (user) => {
         imgEl.style.display = 'block';
     }
 
-    appStore.setState({ user });
+    // Adiciona botão de compartilhar no Header
+    addShareButton(user.id);
+
+    appStore.setState({ user, isSharedMode: false });
     loadData(); 
 };
 
@@ -51,40 +81,75 @@ const handleUserLoggedOut = () => {
     appStore.reset();
 };
 
+const addShareButton = (userId) => {
+    const profileDiv = document.querySelector('.user-profile');
+    // Verifica se já existe para não duplicar
+    if(document.getElementById('btnShareProfile')) return;
+
+    const btnShare = document.createElement('button');
+    btnShare.id = 'btnShareProfile';
+    btnShare.className = 'btn-small';
+    btnShare.style.marginRight = '10px';
+    btnShare.style.borderColor = 'var(--secondary)';
+    btnShare.style.color = 'var(--secondary)';
+    btnShare.innerHTML = '<i class="fa-solid fa-share-nodes"></i>';
+    btnShare.title = "Copiar link do meu perfil";
+    
+    btnShare.onclick = () => {
+        const url = `${window.location.origin}${window.location.pathname}?profile=${userId}`;
+        navigator.clipboard.writeText(url).then(() => {
+            showToast("Link do perfil copiado!", "success");
+        });
+    };
+
+    profileDiv.prepend(btnShare);
+};
+
+// --- DATA LOADERS ---
 const loadData = async () => {
     try {
         const games = await GameService.fetchGames();
         appStore.setState({ games });
     } catch (err) {
-        console.error("Erro:", err);
+        console.error(err);
         showToast("Erro ao carregar dados.", "error");
     }
 };
 
+const loadSharedData = async (userId) => {
+    try {
+        const games = await GameService.fetchSharedGames(userId);
+        appStore.setState({ games });
+        showToast("Visualizando coleção compartilhada");
+    } catch (err) {
+        console.error(err);
+        showToast("Perfil não encontrado ou privado.", "error");
+    }
+};
+
+// --- EVENTS ---
 const setupEvents = () => {
     const safeClick = (id, fn) => {
         const el = document.getElementById(id);
         if (el) el.onclick = fn;
     };
 
-    safeClick('btnGoogle', async () => {
-        await AuthService.signInGoogle();
-    });
+    safeClick('btnGoogle', async () => await AuthService.signInGoogle());
     safeClick('btnLogout', AuthService.signOut);
-    safeClick('btnOpenAddModal', () => openGameModal());
-    safeClick('btnCloseModal', () => toggleModal(false));
-    safeClick('btnDeleteGame', handleDelete);
-
-    const gameModal = document.getElementById('gameModal');
-    if (gameModal) {
-        gameModal.onclick = (e) => {
-            if (e.target.id === 'gameModal') toggleModal(false);
-        };
+    
+    // Só ativa eventos de edição se NÃO for compartilhado
+    if (!appStore.get().isSharedMode) {
+        safeClick('btnOpenAddModal', () => openGameModal());
+        safeClick('btnDeleteGame', handleDelete);
+        const form = document.getElementById('gameForm');
+        if (form) form.onsubmit = handleFormSubmit;
     }
 
-    const form = document.getElementById('gameForm');
-    if (form) form.onsubmit = handleFormSubmit;
+    safeClick('btnCloseModal', () => toggleModal(false));
+    const gameModal = document.getElementById('gameModal');
+    if (gameModal) gameModal.onclick = (e) => { if (e.target.id === 'gameModal') toggleModal(false); };
 
+    // Tabs funcionam em ambos os modos
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -96,6 +161,7 @@ const setupEvents = () => {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.oninput = (e) => appStore.setState({ searchTerm: e.target.value });
 
+    // API Search Logic
     let timeout;
     const apiResults = document.getElementById('apiResults');
     const inputGameName = document.getElementById('inputGameName');
@@ -131,10 +197,14 @@ const setupEvents = () => {
     }
 };
 
+// Modais e Forms helpers (Mantidos igual, mas só chamados se isSharedMode=false)
 let editingId = null;
 window.editGame = (id) => openGameModal(id);
 
 const openGameModal = (gameId = null) => {
+    // Se for compartilhado, bloqueia
+    if(appStore.get().isSharedMode) return;
+
     const form = document.getElementById('gameForm');
     form.reset();
     editingId = gameId;
@@ -209,6 +279,8 @@ const selectApiGame = (game) => {
 
 const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if(appStore.get().isSharedMode) return;
+
     const btn = e.target.querySelector('button[type="submit"]');
     const oldText = btn.innerText;
     btn.innerText = "..."; btn.disabled = true;
@@ -237,6 +309,7 @@ const handleFormSubmit = async (e) => {
 };
 
 const handleDelete = async () => {
+    if(appStore.get().isSharedMode) return;
     if(confirm("Excluir?")) {
         await GameService.deleteGame(editingId);
         toggleModal(false);

@@ -8,10 +8,12 @@ class Store {
         return {
             user: null,
             games: [],
-            filter: 'collection', // collection | backlog | sold
+            filter: 'collection',
             searchTerm: '',
-            activePlatform: null, // NOVO: Filtro vindo do gráfico
-            chartMode: 'platform' // NOVO: platform | status | cost
+            activePlatform: null,
+            chartMode: 'platform',
+            isSharedMode: false, // NOVO: Define se é visitante
+            sharedProfileName: '' // NOVO: Nome do dono do perfil
         };
     }
 
