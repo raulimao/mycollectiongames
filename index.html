@@ -1,12 +1,119 @@
-- não consigo deslogar mais
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameVault | Gerenciador de Coleção</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
 
-- não consigo adicionar jogos. 
+    <div class="bg-grid"></div>
 
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-content glass-panel">
+            <div class="logo-large">
+                <span class="icon-pulse">👾</span>
+                <h1>GAME<span class="neon-text">VAULT</span></h1>
+            </div>
+            <p class="login-subtitle">Entre para gerenciar sua coleção</p>
+            <button id="btnGoogle" class="btn-social google">
+                <i class="fa-brands fa-google"></i> Entrar com Google
+            </button>
+            <p id="loginMessage" class="status-msg"></p>
+        </div>
+    </div>
 
+    <div id="appContainer" class="app-container hidden">
+        <header class="glass-header">
+            <div class="logo">
+                <span class="icon">👾</span>
+                <h1>VAULT</h1>
+            </div>
+            <div class="user-profile">
+                <span id="userName" class="user-name">...</span>
+                <button id="btnLogout" class="btn-small">SAIR</button>
+            </div>
+        </header>
 
-refatore todo o projeto para torna-lo funcional. 
+        <section id="kpi-container" class="kpi-grid"></section>
 
-idenfique pontos de falha e pontos cegos. 
+        <section class="controls-panel glass-panel">
+            <div class="tabs-group">
+                <button class="tab-btn active" data-tab="collection">Coleção</button>
+                <button class="tab-btn" data-tab="sold">Vendidos</button>
+            </div>
+            <div class="filters-group">
+                <input type="text" id="searchInput" placeholder="Buscar jogo...">
+                <button id="btnOpenAddModal" class="btn-primary">+ ADICIONAR</button>
+            </div>
+        </section>
 
+        <main id="gamesContainer" class="games-grid"></main>
+    </div>
 
+    <div id="gameModal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2 id="modalTitle">Novo Jogo</h2>
+                <button id="btnCloseModal" class="close-btn">&times;</button>
+            </div>
+            
+            <form id="gameForm">
+                <input type="hidden" id="editGameId">
+                
+                <div class="input-group">
+                    <label>Nome do Jogo (Busca Automática)</label>
+                    <input type="text" id="inputGameName" placeholder="Digite para buscar..." autocomplete="off" required>
+                    <div id="apiResults" class="api-results hidden"></div>
+                </div>
 
+                <div class="row">
+                    <div class="input-group">
+                        <label>Plataforma</label>
+                        <select id="inputPlatform" required>
+                            <option value="">Selecione...</option>
+                            </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Preço Pago (R$)</label>
+                        <input type="number" id="inputPrice" step="0.01" placeholder="0.00" required>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="input-group">
+                        <label>Status</label>
+                        <select id="inputStatus">
+                            <option value="Coleção">Na Coleção</option>
+                            <option value="À venda">À venda</option>
+                            <option value="Vendido">Vendido</option>
+                            <option value="Importado">Importado</option>
+                        </select>
+                    </div>
+                    <div class="input-group hidden" id="soldGroup">
+                        <label>Valor Venda (R$)</label>
+                        <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
+                    </div>
+                </div>
+
+                <input type="hidden" id="inputImage"> <div class="modal-actions">
+                    <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
+                    <button type="submit" class="btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
