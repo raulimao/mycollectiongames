@@ -110,28 +110,61 @@ const getBadgeClass = (status) => {
     }
 };
 
-// --- KPIS ---
+// --- KPIS PREMIUM (Substitua a função renderKPIs inteira) ---
 const renderKPIs = (allGames) => {
     if (!DOM.kpi) return;
     
+    // 1. Cálculos Financeiros
     const totalInvestido = allGames.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
     const vendidos = allGames.filter(g => g.status === 'Vendido');
-    const totalVendas = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
-    const custoVendidos = vendidos.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-    const lucro = totalVendas - custoVendidos;
-
+    const totalRecuperado = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
+    
+    // 2. Cálculos de Progresso (Gamification)
+    const totalJogos = allGames.length;
+    // Consideramos "completos" os zerados, platinados ou vendidos (já jogou)
+    const finalizados = allGames.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
+    const backlog = allGames.filter(g => ['Backlog', 'Coleção'].includes(g.status)).length;
+    
+    // Evita divisão por zero
+    const taxaConclusao = totalJogos > 0 ? Math.round((finalizados / totalJogos) * 100) : 0;
+    
+    // HTML "Injetado"
     DOM.kpi.innerHTML = `
-        <div class="kpi-card">
-            <div><span class="kpi-label">Total Jogos</span><div class="kpi-value">${allGames.length}</div></div>
-            <i class="fa-solid fa-gamepad fa-2x" style="opacity:0.2"></i>
+        <div class="kpi-card premium">
+            <div>
+                <span class="kpi-label">Investimento Líquido <span class="badge-pro">PRO</span></span>
+                <div class="kpi-value">R$ ${(totalInvestido - totalRecuperado).toFixed(2)}</div>
+                <small style="color:var(--text-muted); font-size:0.7rem">
+                    (Total R$ ${totalInvestido.toFixed(0)} - Recup. R$ ${totalRecuperado.toFixed(0)})
+                </small>
+            </div>
+            <i class="fa-solid fa-wallet fa-2x" style="opacity:0.2; color:#FFD700"></i>
         </div>
-        <div class="kpi-card">
-            <div><span class="kpi-label">Patrimônio (Pago)</span><div class="kpi-value">R$ ${totalInvestido.toFixed(0)}</div></div>
-            <i class="fa-solid fa-wallet fa-2x" style="opacity:0.2"></i>
+
+        <div class="kpi-card premium">
+            <div style="width: 100%">
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="kpi-label">Taxa de Conclusão</span>
+                    <span style="font-family:var(--font-num); color:var(--primary)">${taxaConclusao}%</span>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: ${taxaConclusao}%"></div>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.75rem; color:var(--text-muted);">
+                    <span>${finalizados} Finalizados</span>
+                    <span>${backlog} Restantes</span>
+                </div>
+            </div>
         </div>
-        <div class="kpi-card" style="border-color: ${lucro >= 0 ? 'var(--success)' : 'var(--danger)'}">
-            <div><span class="kpi-label">Lucro (Vendidos)</span><div class="kpi-value ${lucro >= 0 ? 'text-green' : ''}">R$ ${lucro.toFixed(0)}</div></div>
-            <i class="fa-solid fa-chart-line fa-2x" style="opacity:0.2; color:${lucro >= 0 ? 'var(--success)' : 'var(--danger)'}"></i>
+
+        <div class="kpi-card">
+            <div>
+                <span class="kpi-label">Total na Biblioteca</span>
+                <div class="kpi-value">${totalJogos}</div>
+            </div>
+            <i class="fa-solid fa-layer-group fa-2x" style="opacity:0.2"></i>
         </div>
     `;
 };
