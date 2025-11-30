@@ -114,3 +114,26 @@ input:focus { border-color: var(--primary); }
 .hidden { display: none !important; }
 .btn-small { background: transparent; border: 1px solid #333; color: #fff; padding: 5px 15px; cursor: pointer; border-radius: 4px; font-size: 0.8rem; }
 .btn-small:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Botões Sociais */
+.login-actions {
+    display: flex; flex-direction: column; gap: 15px; width: 100%; margin-top: 20px;
+}
+
+.btn-social {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer;
+    font-size: 1rem; border: none; transition: transform 0.2s;
+}
+
+.btn-social:hover { transform: scale(1.02); }
+
+.google { background: white; color: #333; }
+.github { background: #24292e; color: white; border: 1px solid #444; }
+
+.user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--primary);
+    margin-right: 10px;
+}
+
+.hidden { display: none !important; }

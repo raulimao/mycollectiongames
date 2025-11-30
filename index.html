@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameVault SaaS | Dashboard</title>
+    <title>GameVault SaaS</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
@@ -16,23 +16,26 @@
 
     <div class="bg-grid"></div>
 
-    <div id="loginOverlay" class="login-overlay glass-panel">
-        <div class="login-content">
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-content glass-panel">
             <div class="logo-large">
                 <span class="icon-pulse">👾</span>
                 <h1>GAME<span class="neon-text">VAULT</span></h1>
             </div>
-            <p class="login-subtitle">Gerenciador de Coleção Premium</p>
+            <p class="login-subtitle">Acesse sua coleção premium</p>
             
-            <form id="loginForm" class="login-form">
-                <div class="input-group">
-                    <input type="email" id="emailInput" placeholder="Digite seu e-mail de acesso" required>
-                </div>
-                <button type="submit" class="btn-primary full-width">
-                    <span id="btnText">INICIAR SESSÃO</span>
-                    <div id="loader" class="spinner hidden"></div>
+            <div class="login-actions">
+                <button id="btnGoogle" class="btn-social google">
+                    <i class="fa-brands fa-google"></i>
+                    Entrar com Google
                 </button>
-            </form>
+                
+                <button id="btnGithub" class="btn-social github">
+                    <i class="fa-brands fa-github"></i>
+                    Entrar com Github
+                </button>
+            </div>
+            
             <p id="loginMessage" class="status-msg"></p>
         </div>
     </div>
@@ -41,36 +44,28 @@
         <header class="glass-header">
             <div class="logo">
                 <span class="icon">👾</span>
-                <h1>GAME<span class="neon-text">VAULT</span></h1>
+                <h1>VAULT</h1>
             </div>
             <div class="user-profile">
-                <span id="userEmailDisplay" class="user-email">...</span>
+                <img id="userAvatar" src="" alt="Avatar" class="user-avatar hidden">
                 <button id="btnLogout" class="btn-small">SAIR</button>
             </div>
         </header>
 
-        <section id="kpi-container" class="kpi-grid">
-            </section>
+        <section id="kpi-container" class="kpi-grid"></section>
 
         <section class="controls-panel glass-panel">
             <div class="tabs-group">
                 <button class="tab-btn active" data-tab="collection">Minha Coleção</button>
                 <button class="tab-btn" data-tab="sold">Vendas & Lucro</button>
             </div>
-            
             <div class="filters-group">
-                <div class="input-wrapper">
-                    <input type="text" id="searchInput" placeholder="Buscar no Vault...">
-                </div>
-                <select id="platformSelect">
-                    <option value="all">Todas as Plataformas</option>
-                </select>
-                <button id="btnNewGame" class="btn-primary">+ NOVO JOGO</button>
+                <input type="text" id="searchInput" placeholder="Buscar...">
+                <select id="platformSelect"><option value="all">Todas</option></select>
             </div>
         </section>
 
-        <main id="gamesContainer" class="games-grid">
-            </main>
+        <main id="gamesContainer" class="games-grid"></main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
