@@ -3,340 +3,297 @@ import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
 import { renderApp, showToast, toggleModal } from './modules/ui.js';
 
+let editingId = null;
+let isInitializing = false;
+
+// Lista padrão para quando abrir o modal vazio
+const DEFAULT_PLATFORMS = [
+    "PC", "PlayStation 5", "PlayStation 4", "Xbox Series X/S", 
+    "Xbox One", "Nintendo Switch", "Steam Deck", "Mobile", "Outros"
+];
+
 // --- INICIALIZAÇÃO ---
 const init = async () => {
-    console.log("🚀 GameVault Pro Iniciado");
-    appStore.subscribe(renderApp);
+    console.log("🚀 [System] Inicializando GameVault...");
+    
+    appStore.subscribe(state => renderApp(state));
+    setupGlobalEvents();
 
-    // 1. VERIFICAÇÃO DE ROTA (Link Compartilhado via Nickname)
     const urlParams = new URLSearchParams(window.location.search);
-    const sharedNick = urlParams.get('u'); // Agora usamos 'u' de user/url
+    const sharedNick = urlParams.get('u');
 
     if (sharedNick) {
-        // --- MODO VISITANTE ---
-        console.log("👀 Visitando Gamertag:", sharedNick);
-        handleVisitorMode(sharedNick);
+        await handleVisitorMode(sharedNick);
     } else {
-        // --- MODO LOGIN ---
         checkAuthStatus();
-    }
-
-    setupEvents();
-};
-
-const handleVisitorMode = async (nickname) => {
-    // UI Setup para Visitante
-    document.getElementById('globalLoader').classList.remove('hidden');
-    
-    // Tenta achar o ID pelo Nickname
-    const userId = await GameService.getUserIdByNickname(nickname);
-    
-    document.getElementById('globalLoader').classList.add('hidden');
-    document.getElementById('loginOverlay').classList.add('hidden');
-    document.getElementById('appContainer').classList.remove('hidden');
-
-    if (userId) {
-        appStore.setState({ isSharedMode: true, sharedProfileName: nickname });
-        
-        // Header Visitante
-        document.querySelector('.user-profile').innerHTML = `
-            <a href="index.html" class="btn-small" style="border-color:var(--primary); color:var(--primary)">
-                <i class="fa-solid fa-power-off"></i> MEU LOGIN
-            </a>
-        `;
-        // Título Personalizado
-        document.querySelector('.logo h1').innerHTML = `VAULT <small style="font-size:0.4em; color:var(--secondary)">// ${nickname.toUpperCase()}</small>`;
-        
-        await loadSharedData(userId);
-    } else {
-        // Perfil não encontrado
-        document.getElementById('gamesContainer').innerHTML = `
-            <div style="grid-column:1/-1; text-align:center; padding:50px;">
-                <h2 style="color:var(--danger)">404 // SYSTEM ERROR</h2>
-                <p>O Gamertag <strong>"${nickname}"</strong> não foi encontrado.</p>
-                <a href="index.html" class="btn-primary" style="display:inline-flex; margin-top:20px;">VOLTAR AO INÍCIO</a>
-            </div>
-        `;
     }
 };
 
 const checkAuthStatus = () => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const safetyTimer = setTimeout(() => {
         const loader = document.getElementById('globalLoader');
-        try {
-            if (session?.user) {
-                if (loader) loader.classList.add('hidden');
-                await handleUserLoggedIn(session.user);
-            } else {
-                handleUserLoggedOut();
-                if (loader) loader.classList.add('hidden');
+        if (loader && !loader.classList.contains('hidden')) {
+            console.warn("⚠️ [System] Safety Timeout. Liberando UI.");
+            loader.classList.add('hidden');
+            if(document.getElementById('appContainer').classList.contains('hidden')) {
+                 document.getElementById('loginOverlay').classList.remove('hidden');
             }
-        } catch (error) {
-            console.error("Erro crítico:", error);
-            if (loader) loader.classList.add('hidden');
+        }
+    }, 5000);
+
+    supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log(`👤 [Auth] Evento: ${event}`);
+        if (isInitializing && event === 'SIGNED_IN') return;
+        
+        clearTimeout(safetyTimer);
+
+        const loader = document.getElementById('globalLoader');
+        const loginOverlay = document.getElementById('loginOverlay');
+        const appContainer = document.getElementById('appContainer');
+
+        if (session?.user) {
+            isInitializing = true;
+            if(loginOverlay) loginOverlay.classList.add('hidden');
+            if(loader) loader.classList.add('hidden'); 
+            if(appContainer) appContainer.classList.remove('hidden');
+
+            appStore.setState({ user: session.user, isSharedMode: false });
+
+            handleUserLoggedIn(session.user).finally(() => {
+                isInitializing = false;
+            });
+
+        } else {
+            appStore.reset();
+            if(appContainer) appContainer.classList.add('hidden');
+            if(loginOverlay) loginOverlay.classList.remove('hidden');
+            if(loader) loader.classList.add('hidden');
         }
     });
 };
 
 const handleUserLoggedIn = async (user) => {
-    // 1. Verifica se já tem Nickname
-    const profile = await GameService.getMyProfile();
-    
-    if (!profile) {
-        // Se não tem, abre modal OBRIGATÓRIO e para o fluxo
-        document.getElementById('loginOverlay').classList.add('hidden');
-        const nickModal = document.getElementById('nicknameModal');
-        nickModal.classList.remove('hidden');
+    try {
+        console.log("📥 [Data] Buscando perfil...");
+        const profile = await GameService.getMyProfile(user.id);
         
-        // Listener do Form de Nickname
-        document.getElementById('nicknameForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('inputNickname');
-            const btn = e.target.querySelector('button');
-            const originalText = btn.innerText;
-            
-            try {
-                btn.innerText = "REGISTRANDO..."; btn.disabled = true;
-                const newProfile = await GameService.createProfile(input.value);
-                
-                // Sucesso!
-                nickModal.classList.add('hidden');
-                finishLoginSetup(user, newProfile.nickname);
-                showToast(`Bem-vindo, ${newProfile.nickname}!`, "success");
-            } catch (err) {
-                showToast(err.message, "error");
-                btn.innerText = originalText; btn.disabled = false;
-            }
-        };
-        return; // Para aqui até o usuário criar o nick
-    }
+        if (!profile) {
+            setTimeout(() => {
+                const modal = document.getElementById('nicknameModal');
+                if(modal) {
+                    modal.classList.remove('hidden');
+                    modal.style.zIndex = "10000";
+                }
+            }, 500);
+            setupNicknameForm(user);
+        } else {
+            updateUserProfileUI(profile);
+            appStore.setState({ sharedProfileName: profile.nickname }); 
+        }
 
-    finishLoginSetup(user, profile.nickname);
+        setupAuthEvents();
+        console.log("📥 [Data] Baixando jogos...");
+        await loadData(user.id);
+        
+    } catch (error) {
+        console.error("❌ [Critico] Erro no fluxo de login:", error);
+        showToast("Erro ao conectar.", "error");
+    }
 };
 
-const finishLoginSetup = async (user, nickname) => {
+const loadData = async (userId) => {
+    try {
+        const games = await GameService.fetchGames(userId);
+        appStore.setState({ games });
+    } catch (e) { console.error("Erro loadData:", e); }
+};
+
+const handleVisitorMode = async (nickname) => {
+    const userId = await GameService.getUserIdByNickname(nickname);
+    document.getElementById('globalLoader').classList.add('hidden');
     document.getElementById('loginOverlay').classList.add('hidden');
-    document.getElementById('appContainer').classList.remove('hidden');
     
-    const nameEl = document.getElementById('userName');
-    const imgEl = document.getElementById('userAvatar');
-    
-    // Prioriza o Nickname no display
-    nameEl.innerText = nickname.toUpperCase();
-    nameEl.style.fontFamily = 'var(--font-num)';
-    nameEl.style.color = 'var(--primary)';
-    
-    if (user.user_metadata?.avatar_url) {
-        imgEl.src = user.user_metadata.avatar_url;
-        imgEl.style.display = 'block';
-    }
-
-    addShareButton(nickname); // Passa o nickname, não o ID
-    appStore.setState({ user, isSharedMode: false });
-    loadData();
-};
-
-const handleUserLoggedOut = () => {
-    document.getElementById('loginOverlay').classList.remove('hidden');
-    document.getElementById('appContainer').classList.add('hidden');
-    appStore.reset();
-};
-
-const addShareButton = (nickname) => {
-    const profileDiv = document.querySelector('.user-profile');
-    if(document.getElementById('btnShareProfile')) return;
-
-    const btnShare = document.createElement('button');
-    btnShare.id = 'btnShareProfile';
-    btnShare.className = 'btn-small';
-    btnShare.style.marginRight = '10px';
-    btnShare.style.borderColor = 'var(--secondary)';
-    btnShare.style.color = 'var(--secondary)';
-    btnShare.innerHTML = '<i class="fa-solid fa-share-nodes"></i> LINK';
-    btnShare.title = "Copiar link público";
-    
-    btnShare.onclick = () => {
-        // Gera URL limpa com nickname
-        const url = `${window.location.origin}${window.location.pathname}?u=${nickname}`;
-        navigator.clipboard.writeText(url).then(() => {
-            showToast("Link público copiado!", "success");
-        });
-    };
-
-    profileDiv.prepend(btnShare);
-};
-
-const loadData = async () => {
-    try {
-        const games = await GameService.fetchGames();
-        appStore.setState({ games });
-    } catch (err) {
-        console.error("Erro:", err);
-        showToast("Erro ao carregar dados.", "error");
-    }
-};
-
-const loadSharedData = async (userId) => {
-    try {
+    if (userId) {
+        document.getElementById('appContainer').classList.remove('hidden');
+        document.getElementById('headerActions').innerHTML = '';
+        
         const games = await GameService.fetchSharedGames(userId);
-        appStore.setState({ games });
-        showToast("Visualizando coleção pública");
-    } catch (err) {
-        console.error(err);
-        showToast("Erro ao carregar perfil.", "error");
+        appStore.setState({ 
+            games, 
+            isSharedMode: true, 
+            sharedProfileName: nickname 
+        });
+    } else {
+        alert("Perfil não encontrado!");
+        window.location.href = window.location.pathname;
     }
+};
+
+// --- UI HELPERS ---
+
+const updateUserProfileUI = (profile) => {
+    const nameEl = document.getElementById('userName');
+    const headerActions = document.getElementById('headerActions');
+    
+    if(nameEl) {
+        nameEl.innerText = profile.nickname.toUpperCase();
+        nameEl.style.display = 'block';
+    }
+
+    if(headerActions && !document.getElementById('btnShareProfile')) {
+        const btn = document.createElement('button');
+        btn.id = 'btnShareProfile';
+        btn.className = 'btn-small';
+        btn.innerHTML = '<i class="fa-solid fa-share-nodes"></i> LINK';
+        btn.onclick = () => {
+            const url = `${window.location.origin}${window.location.pathname}?u=${profile.nickname}`;
+            navigator.clipboard.writeText(url).then(() => showToast("Link copiado!", "success"));
+        };
+        headerActions.prepend(btn);
+    }
+};
+
+// Função auxiliar para resetar o select de plataformas
+const resetPlatformOptions = (selectedPlatform = null) => {
+    const select = document.getElementById('inputPlatform');
+    if(!select) return;
+    
+    select.innerHTML = '<option value="" disabled selected>Selecione a plataforma...</option>';
+    
+    DEFAULT_PLATFORMS.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.innerText = p;
+        if(selectedPlatform && p === selectedPlatform) opt.selected = true;
+        select.appendChild(opt);
+    });
 };
 
 // --- EVENTS ---
-const setupEvents = () => {
+
+const setupGlobalEvents = () => {
     const safeClick = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
 
-    safeClick('btnGoogle', async () => await AuthService.signInGoogle());
-    safeClick('btnLogout', AuthService.signOut);
-    
-    if (!appStore.get().isSharedMode) {
-        safeClick('btnOpenAddModal', () => openGameModal());
-        safeClick('btnDeleteGame', handleDelete);
-        const form = document.getElementById('gameForm');
-        if (form) form.onsubmit = handleFormSubmit;
-    }
-
+    safeClick('btnGoogle', () => AuthService.signInGoogle());
     safeClick('btnCloseModal', () => toggleModal(false));
-    const gameModal = document.getElementById('gameModal');
-    if (gameModal) gameModal.onclick = (e) => { if (e.target.id === 'gameModal') toggleModal(false); };
-
+    
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = (e) => {
+        btn.addEventListener('click', (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             appStore.setState({ filter: e.target.dataset.tab });
-        };
+        });
     });
 
     const searchInput = document.getElementById('searchInput');
-    if (searchInput) searchInput.oninput = (e) => appStore.setState({ searchTerm: e.target.value });
+    if(searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
+};
 
-    let timeout;
-    const apiResults = document.getElementById('apiResults');
-    const inputGameName = document.getElementById('inputGameName');
-    
-    if (inputGameName) {
-        inputGameName.oninput = (e) => {
-            const query = e.target.value;
-            clearTimeout(timeout);
-            if (query.length < 3) {
-                if(apiResults) apiResults.classList.add('hidden');
-                return;
-            }
-            if(apiResults) {
-                apiResults.classList.remove('hidden');
-                apiResults.innerHTML = '<div style="padding:15px;text-align:center;color:#666">Digitando...</div>';
-            }
-            timeout = setTimeout(async () => {
-                try {
-                    const results = await GameService.searchRawg(query);
-                    renderApiResults(results);
-                } catch (e) { console.error(e); }
-            }, 600);
-        };
+const setupAuthEvents = () => {
+    const btnLogout = document.getElementById('btnLogout');
+    if(btnLogout) {
+        const newBtn = btnLogout.cloneNode(true);
+        btnLogout.parentNode.replaceChild(newBtn, btnLogout);
+        newBtn.onclick = () => AuthService.signOut();
     }
+
+    const btnAdd = document.getElementById('btnOpenAddModal');
+    if(btnAdd) btnAdd.onclick = () => openGameModal();
+
+    const form = document.getElementById('gameForm');
+    if(form) form.onsubmit = handleFormSubmit;
+
+    const btnDelete = document.getElementById('btnDeleteGame');
+    if(btnDelete) btnDelete.onclick = handleDelete;
+
+    setupRawgSearch();
 
     const inputStatus = document.getElementById('inputStatus');
     if (inputStatus) {
         inputStatus.onchange = (e) => {
-            const group = document.getElementById('soldGroup');
-            if (e.target.value === 'Vendido') group.classList.remove('hidden');
-            else group.classList.add('hidden');
+            const soldGroup = document.getElementById('soldGroup');
+            if (e.target.value === 'Vendido') soldGroup.classList.remove('hidden');
+            else soldGroup.classList.add('hidden');
         };
     }
 };
 
-let editingId = null;
+const setupNicknameForm = (user) => {
+    const form = document.getElementById('nicknameForm');
+    if(form) form.onsubmit = async (e) => {
+        e.preventDefault();
+        const nick = document.getElementById('inputNickname').value;
+        const btn = form.querySelector('button');
+        const oldText = btn.innerText;
+        btn.innerText = "CRIANDO..."; btn.disabled = true;
+
+        try {
+            await GameService.createProfile(nick);
+            document.getElementById('nicknameModal').classList.add('hidden');
+            appStore.setState({ sharedProfileName: nick });
+            updateUserProfileUI({ nickname: nick });
+        } catch(err) {
+            alert("Erro: " + err.message);
+        } finally {
+            btn.innerText = oldText; btn.disabled = false;
+        }
+    };
+};
+
+// --- FORM LOGIC ---
+
 window.editGame = (id) => openGameModal(id);
 
 const openGameModal = (gameId = null) => {
-    if(appStore.get().isSharedMode) return;
-
     const form = document.getElementById('gameForm');
-    form.reset();
-    editingId = gameId;
+    const modalTitle = document.getElementById('modalTitle');
+    const btnDelete = document.getElementById('btnDeleteGame');
     
+    form.reset();
     document.getElementById('apiResults').classList.add('hidden');
     document.getElementById('soldGroup').classList.add('hidden');
-    
-    const select = document.getElementById('inputPlatform');
-    select.innerHTML = '';
+    editingId = gameId;
 
     if (gameId) {
+        modalTitle.innerText = "EDITAR JOGO";
+        btnDelete.classList.remove('hidden');
         const game = appStore.get().games.find(g => g.id === gameId);
-        if (!game) return;
+        
+        // Reseta plataformas padrão mas seleciona a correta
+        resetPlatformOptions(game?.platform);
+        
+        if(game) {
+            document.getElementById('inputGameName').value = game.title;
+            // O valor do platform já foi tratado no resetPlatformOptions
+            if(game.platform && !DEFAULT_PLATFORMS.includes(game.platform)) {
+                // Se a plataforma salva não estiver na lista padrão, adiciona ela
+                const select = document.getElementById('inputPlatform');
+                const opt = document.createElement('option');
+                opt.value = game.platform;
+                opt.innerText = game.platform;
+                opt.selected = true;
+                select.appendChild(opt);
+            }
 
-        document.getElementById('modalTitle').innerText = "Editar Jogo";
-        document.getElementById('btnDeleteGame').classList.remove('hidden');
-        document.getElementById('inputGameName').value = game.title;
-        
-        const opt = document.createElement('option');
-        opt.value = game.platform;
-        opt.innerText = game.platform;
-        select.appendChild(opt);
-        
-        document.getElementById('inputPrice').value = game.price_paid;
-        document.getElementById('inputStatus').value = game.status;
-        document.getElementById('inputImage').value = game.image_url;
-        
-        if (game.status === 'Vendido') {
-            document.getElementById('soldGroup').classList.remove('hidden');
+            document.getElementById('inputStatus').value = game.status;
+            document.getElementById('inputPrice').value = game.price_paid;
             document.getElementById('inputSoldPrice').value = game.price_sold;
+            document.getElementById('inputImage').value = game.image_url;
+            if(game.status === 'Vendido') document.getElementById('soldGroup').classList.remove('hidden');
         }
     } else {
-        document.getElementById('modalTitle').innerText = "Novo Jogo";
-        document.getElementById('btnDeleteGame').classList.add('hidden');
-        select.innerHTML = '<option value="" disabled selected>Busque o nome do jogo...</option>';
+        modalTitle.innerText = "NOVO JOGO";
+        btnDelete.classList.add('hidden');
+        resetPlatformOptions(); // Garante lista limpa para novo jogo
     }
     toggleModal(true);
 };
 
-const renderApiResults = (games) => {
-    const container = document.getElementById('apiResults');
-    container.innerHTML = '';
-    if(!games.length) {
-        container.innerHTML = '<div style="padding:10px;text-align:center">Sem resultados</div>';
-        return;
-    }
-    games.forEach(g => {
-        const div = document.createElement('div');
-        div.className = 'api-item';
-        div.innerHTML = `<img src="${g.background_image||''}" width="40"> <strong>${g.name}</strong>`;
-        div.onclick = () => selectApiGame(g);
-        container.appendChild(div);
-    });
-};
-
-const selectApiGame = (game) => {
-    document.getElementById('inputGameName').value = game.name;
-    document.getElementById('inputImage').value = game.background_image || '';
-    const select = document.getElementById('inputPlatform');
-    select.innerHTML = '';
-    if(game.platforms) {
-        game.platforms.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.platform.name;
-            opt.innerText = p.platform.name;
-            select.appendChild(opt);
-        });
-        select.selectedIndex = 0;
-    }
-    document.getElementById('apiResults').classList.add('hidden');
-};
-
 const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if(appStore.get().isSharedMode) return;
-
     const btn = e.target.querySelector('button[type="submit"]');
     const oldText = btn.innerText;
-    btn.innerText = "..."; btn.disabled = true;
-
+    btn.innerText = "SALVANDO..."; btn.disabled = true;
     try {
         const data = {
             title: document.getElementById('inputGameName').value,
@@ -350,23 +307,89 @@ const handleFormSubmit = async (e) => {
         if (editingId) await GameService.updateGame(editingId, data);
         else await GameService.addGame(data);
         
-        showToast("Salvo com sucesso!");
+        showToast("Salvo!");
         toggleModal(false);
-        loadData();
-    } catch (error) {
-        showToast("Erro: " + error.message, "error");
-    } finally {
-        btn.innerText = oldText; btn.disabled = false;
+        const { user } = appStore.get();
+        if(user) loadData(user.id);
+    } catch (error) { 
+        showToast("Erro ao salvar", "error");
+    } finally { 
+        btn.innerText = oldText; btn.disabled = false; 
     }
 };
 
 const handleDelete = async () => {
-    if(appStore.get().isSharedMode) return;
-    if(confirm("Excluir?")) {
+    if(confirm("Excluir jogo?")) {
         await GameService.deleteGame(editingId);
         toggleModal(false);
-        loadData();
+        const { user } = appStore.get();
+        if(user) loadData(user.id);
+        showToast("Excluído.");
     }
+};
+
+const setupRawgSearch = () => {
+    let timeout;
+    const input = document.getElementById('inputGameName');
+    const resultsDiv = document.getElementById('apiResults');
+    if (!input) return;
+
+    input.addEventListener('input', (e) => {
+        clearTimeout(timeout);
+        const query = e.target.value;
+        if (query.length < 3) { resultsDiv.classList.add('hidden'); return; }
+
+        timeout = setTimeout(async () => {
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.innerHTML = '<div style="padding:10px; color:#666">...</div>';
+            const games = await GameService.searchRawg(query);
+            resultsDiv.innerHTML = '';
+            
+            if(games.length === 0) { resultsDiv.classList.add('hidden'); return; }
+
+            games.forEach(g => {
+                const el = document.createElement('div');
+                el.className = 'api-item';
+                el.innerHTML = `<img src="${g.background_image || ''}"><div class="api-info"><strong>${g.name}</strong></div>`;
+                
+                // --- AQUI ESTÁ A MÁGICA DA PLATAFORMA ---
+                el.onclick = () => {
+                    document.getElementById('inputGameName').value = g.name;
+                    document.getElementById('inputImage').value = g.background_image;
+                    resultsDiv.classList.add('hidden');
+                    
+                    const select = document.getElementById('inputPlatform');
+                    select.innerHTML = ''; // Limpa as opções padrão
+                    
+                    // Verifica se a API retornou plataformas
+                    if (g.platforms && g.platforms.length > 0) {
+                        // Adiciona uma opção placeholder
+                        const placeholder = document.createElement('option');
+                        placeholder.text = "Selecione a versão...";
+                        placeholder.value = "";
+                        placeholder.disabled = true;
+                        placeholder.selected = true;
+                        select.appendChild(placeholder);
+
+                        // Cria uma opção para cada plataforma real do jogo
+                        g.platforms.forEach(p => {
+                            const opt = document.createElement('option');
+                            opt.value = p.platform.name; // Ex: "PlayStation 5"
+                            opt.text = p.platform.name;
+                            select.appendChild(opt);
+                        });
+                    } else {
+                        // Fallback se a API não der plataformas
+                        resetPlatformOptions();
+                    }
+                };
+                resultsDiv.appendChild(el);
+            });
+        }, 600);
+    });
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !resultsDiv.contains(e.target)) resultsDiv.classList.add('hidden');
+    });
 };
 
 document.addEventListener('DOMContentLoaded', init);

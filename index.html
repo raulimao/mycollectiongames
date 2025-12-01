@@ -6,13 +6,34 @@
     <title>GameVault | Cyberpunk Edition</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+
+    <script>
+        window.addEventListener('error', function(e) {
+            console.error("Erro Crítico de Inicialização:", e.error);
+            const loader = document.getElementById('globalLoader');
+            if(loader) {
+                // Se der erro, remove o loader para vermos o console ou o layout quebrado
+                loader.innerHTML = `<div style="color:red; text-align:center; padding:20px;">
+                    <h3>ERRO DE SISTEMA</h3>
+                    <p>${e.message}</p>
+                    <small>Verifique o console (F12)</small>
+                </div>`;
+                // Não removemos o fundo preto para destacar o erro, mas paramos o spinner
+                const spinner = loader.querySelector('.spinner');
+                if(spinner) spinner.style.display = 'none';
+            }
+        });
+    </script>
 </head>
 <body>
 
@@ -20,17 +41,16 @@
 
     <div id="globalLoader" class="login-overlay">
         <div class="spinner"></div>
-        <p style="margin-top: 15px; color: #666; font-size: 0.9rem; font-family: var(--font-num);">INICIALIZANDO SISTEMA...</p>
+        <p class="loader-text">INICIALIZANDO SISTEMA...</p>
     </div>
 
     <div id="loginOverlay" class="login-overlay hidden">
         <div class="login-content glass-panel">
             <div class="logo" style="margin-bottom: 20px; font-size: 2.5rem;">
-                <span style="color:var(--primary); text-shadow: 0 0 15px var(--primary);">👾</span>
-                <span style="font-family: var(--font-num);">GAME<span style="color:var(--primary)">VAULT</span></span>
+                <span class="logo-icon">👾</span>
+                <span class="logo-text">GAME<span>VAULT</span></span>
             </div>
             <p class="login-subtitle">Gerencie sua coleção como um profissional</p>
-            
             <button id="btnGoogle" class="btn-social google">
                 <i class="fa-brands fa-google"></i> Entrar com Google
             </button>
@@ -41,11 +61,13 @@
         <header class="glass-header">
             <div class="logo">
                 <span class="icon">👾</span>
-                <h1>VAULT <small style="font-size:0.4em; color:var(--primary); text-shadow:0 0 10px var(--primary)">PRO</small></h1>
+                <h1>VAULT <small class="pro-badge">PRO</small></h1>
             </div>
             <div class="user-profile">
+                <div id="headerActions" style="display:flex; gap:10px; align-items:center;"></div>
+                
                 <img id="userAvatar" class="avatar-img" src="" alt="User" style="display:none">
-                <span id="userName" class="user-name">Carregando...</span>
+                <span id="userName" class="user-name">...</span>
                 <button id="btnLogout" class="btn-small">SAIR</button>
             </div>
         </header>
@@ -53,31 +75,29 @@
         <section class="dashboard-grid">
             <div id="kpi-container" class="kpi-group"></div>
             
-        <div class="chart-container glass-panel">
-            <div class="chart-header">
-                <span class="chart-title-deco">ANALYTICS // SYSTEM</span>
-                <div class="chart-controls">
-                    <button class="chart-tab active" onclick="window.switchChart('platform')">
-                        <i class="fa-solid fa-gamepad"></i> PLATFORM
-                    </button>
-                    <button class="chart-tab" onclick="window.switchChart('status')">
-                        <i class="fa-solid fa-chart-pie"></i> STATUS
-                    </button>
-                    <button class="chart-tab" onclick="window.switchChart('cost')">
-                        <i class="fa-solid fa-coins"></i> GASTOS
-                    </button>
+            <div class="chart-container glass-panel">
+                <div class="chart-header">
+                    <span class="chart-title-deco">ANALYTICS // SYSTEM</span>
+                    <div class="chart-controls">
+                        <button class="chart-tab active" onclick="window.switchChart('platform')">
+                            <i class="fa-solid fa-gamepad"></i> PLATFORM
+                        </button>
+                        <button class="chart-tab" onclick="window.switchChart('status')">
+                            <i class="fa-solid fa-chart-pie"></i> STATUS
+                        </button>
+                        <button class="chart-tab" onclick="window.switchChart('cost')">
+                            <i class="fa-solid fa-coins"></i> GASTOS
+                        </button>
+                    </div>
+                </div>
+                <div class="canvas-wrapper">
+                    <canvas id="collectionChart"></canvas>
+                </div>
+                <div id="chartFilterBadge" class="chart-filter-badge hidden" onclick="window.clearChartFilter()">
+                    <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> 
+                    <small>(Clique p/ limpar)</small>
                 </div>
             </div>
-            
-            <div class="canvas-wrapper">
-                <canvas id="collectionChart"></canvas>
-            </div>
-
-            <div id="chartFilterBadge" class="chart-filter-badge hidden" onclick="window.clearChartFilter()">
-                <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> 
-                <small>(Clique p/ limpar)</small>
-            </div>
-        </div>
         </section>
 
         <section class="controls-panel glass-panel">
@@ -117,21 +137,25 @@
                     <div id="apiResults" class="api-results hidden"></div>
                 </div>
 
-                <div class="row" style="display: flex; gap: 15px;">
-                    <div class="input-group" style="flex: 1;">
+                <div class="row-flex">
+                    <div class="input-group flex-1">
                         <label>Plataforma</label>
-                        <select id="inputPlatform" required style="cursor: pointer;">
-                            <option value="" disabled selected>Busque um jogo acima...</option>
+                        <select id="inputPlatform" required>
+                            <option value="" disabled selected>Busque um jogo...</option>
+                            <option value="PC">PC</option>
+                            <option value="PlayStation 5">PlayStation 5</option>
+                            <option value="Xbox Series X">Xbox Series X</option>
+                            <option value="Nintendo Switch">Nintendo Switch</option>
                         </select>
                     </div>
-                    <div class="input-group" style="flex: 1;">
+                    <div class="input-group flex-1">
                         <label>Preço Pago (R$)</label>
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
 
-                <div class="row" style="display: flex; gap: 15px;">
-                    <div class="input-group" style="flex: 1;">
+                <div class="row-flex">
+                    <div class="input-group flex-1">
                         <label>Status Atual</label>
                         <select id="inputStatus" required>
                             <option value="Coleção">Na Estante</option>
@@ -144,7 +168,7 @@
                         </select>
                     </div>
                     
-                    <div class="input-group hidden" id="soldGroup" style="flex: 1;">
+                    <div class="input-group hidden flex-1" id="soldGroup">
                         <label>Valor Venda (R$)</label>
                         <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
                     </div>
@@ -152,7 +176,7 @@
 
                 <input type="hidden" id="inputImage">
 
-                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <div class="modal-actions">
                     <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
                     <button type="submit" class="btn-primary">Salvar Jogo</button>
                 </div>
@@ -160,24 +184,24 @@
         </div>
     </div>
 
-    <div id="nicknameModal" class="modal-overlay hidden" style="z-index: 9999;">
-        <div class="modal-content glass-panel" style="max-width: 400px; text-align: center;">
+    <div id="nicknameModal" class="modal-overlay hidden" style="z-index: 10000;">
+        <div class="modal-content glass-panel center-content" style="max-width: 400px;">
             <div style="margin-bottom: 20px;">
-                <i class="fa-solid fa-fingerprint fa-3x" style="color:var(--primary); text-shadow:0 0 15px var(--primary)"></i>
+                <i class="fa-solid fa-fingerprint fa-3x brand-icon"></i>
             </div>
             
-            <h2 style="font-family:var(--font-num); margin-bottom:10px;">IDENTIDADE</h2>
-            <p style="color:var(--text-muted); margin-bottom:25px; font-size:0.9rem;">
+            <h2 class="modal-title-center">IDENTIDADE</h2>
+            <p class="modal-desc">
                 Crie seu <strong>Gamertag</strong> único para compartilhar sua coleção.
             </p>
             
             <form id="nicknameForm">
                 <div class="input-group">
                     <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required 
-                           style="text-align:center; font-family:var(--font-num); letter-spacing:1px; font-size:1.2rem; text-transform:lowercase;"
+                           class="input-center"
                            pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
                 </div>
-                <button type="submit" class="btn-primary" style="width:100%; justify-content:center;">
+                <button type="submit" class="btn-primary full-width">
                     CONFIRMAR ID
                 </button>
             </form>
@@ -186,35 +210,34 @@
 
     <div id="toastContainer" class="toast-container"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-    
-    <script>
-        particlesJS('particles-js', {
-          "particles": {
-            "number": { "value": 60, "density": { "enable": true, "value_area": 800 } },
-            "color": { "value": ["#d946ef", "#0ea5e9"] },
-            "shape": { "type": "circle" },
-            "opacity": { "value": 0.5, "random": true },
-            "size": { "value": 3, "random": true },
-            "line_linked": {
-              "enable": true, "distance": 150,
-              "color": "#ffffff", "opacity": 0.1, "width": 1
-            },
-            "move": { "enable": true, "speed": 1, "direction": "none", "random": true, "out_mode": "out" }
-          },
-          "interactivity": {
-            "detect_on": "canvas",
-            "events": {
-              "onhover": { "enable": true, "mode": "grab" },
-              "onclick": { "enable": true, "mode": "push" },
-              "resize": true
-            },
-            "modes": { "grab": { "distance": 140, "line_linked": { "opacity": 0.5 } } }
-          },
-          "retina_detect": true
-        });
-    </script>
+    <noscript>
+        <div style="position:fixed; inset:0; bg:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">
+            O JavaScript é necessário para acessar o Vault.
+        </div>
+    </noscript>
 
     <script type="module" src="js/main.js"></script>
+
+    <script>
+        window.onload = function() {
+            if(window.particlesJS) {
+                particlesJS('particles-js', {
+                  "particles": {
+                    "number": { "value": 60, "density": { "enable": true, "value_area": 800 } },
+                    "color": { "value": ["#d946ef", "#0ea5e9"] },
+                    "shape": { "type": "circle" },
+                    "opacity": { "value": 0.5, "random": true },
+                    "size": { "value": 3, "random": true },
+                    "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.1, "width": 1 },
+                    "move": { "enable": true, "speed": 1 }
+                  },
+                  "interactivity": {
+                    "detect_on": "canvas",
+                    "events": { "onhover": { "enable": true, "mode": "grab" } }
+                  }
+                });
+            }
+        };
+    </script>
 </body>
 </html>

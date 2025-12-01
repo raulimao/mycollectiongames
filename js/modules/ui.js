@@ -1,23 +1,24 @@
 import { appStore } from './store.js';
 
-const DOM = {
+// Cache DOM Helper
+const getDOM = () => ({
     grid: document.getElementById('gamesContainer'),
     kpi: document.getElementById('kpi-container'),
     toast: document.getElementById('toastContainer'),
     modal: document.getElementById('gameModal'),
     filterBadge: document.getElementById('chartFilterBadge'),
     filterName: document.getElementById('filterName')
-};
+});
 
+// Funções Expostas ao Window (Necessário para onclick no HTML)
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
-    const btns = document.querySelectorAll('.chart-tab');
+    // Encontra o botão certo baseado na ordem ou texto (simplificado pela ordem do HTML)
+    const tabs = document.querySelectorAll('.chart-tab');
+    if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
+    if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
+    if(mode === 'cost' && tabs[2]) tabs[2].classList.add('active');
     
-    // Lógica para ativar abas
-    if(mode === 'platform' && btns[0]) btns[0].classList.add('active');
-    if(mode === 'status' && btns[1]) btns[1].classList.add('active');
-    if(mode === 'cost' && btns[2]) btns[2].classList.add('active');
-
     appStore.setState({ chartMode: mode });
 };
 
@@ -25,28 +26,36 @@ window.clearChartFilter = () => {
     appStore.setState({ activePlatform: null });
 };
 
+// Utils
+const formatMoney = (val) => {
+    return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
+// --- RENDER MAIN ---
 export const renderApp = (state) => {
-    // Ajustes de Visibilidade baseados no Modo Compartilhado
+    const DOM = getDOM();
     const isShared = state.isSharedMode;
-    
-    // Esconde controles de edição se for visitante
-    const controlsPanel = document.querySelector('.filters-group');
-    if(controlsPanel) {
-        if(isShared) controlsPanel.classList.add('hidden');
-        else controlsPanel.classList.remove('hidden');
-    }
 
-    // Esconde aba "Gastos" do gráfico se for visitante
+    // 1. Controle de Visibilidade UI (Visitante vs Dono)
+    const controlsPanel = document.querySelector('.controls-panel');
     const costTab = document.querySelectorAll('.chart-tab')[2];
-    if(costTab) {
-        if(isShared) costTab.style.display = 'none';
-        else costTab.style.display = 'inline-block';
+    const headerActions = document.getElementById('headerActions');
+
+    if(isShared) {
+        if(controlsPanel) controlsPanel.classList.add('hidden');
+        if(costTab) costTab.style.display = 'none';
+        if(headerActions) headerActions.innerHTML = `<span class="badge bg-playing">Visitando: ${state.sharedProfileName}</span>`;
+    } else {
+        if(controlsPanel) controlsPanel.classList.remove('hidden');
+        if(costTab) costTab.style.display = 'inline-flex';
     }
 
+    // 2. Filtragem de Dados
     let filteredGames = state.games || [];
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
+    // Filtro Lógico
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'backlog') {
@@ -55,27 +64,38 @@ export const renderApp = (state) => {
         filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog'].includes(g.status));
     }
 
+    // Filtro de Busca
     if (term) filteredGames = filteredGames.filter(g => g.title.toLowerCase().includes(term));
 
+    // Filtro de Gráfico
     if (state.activePlatform) {
         filteredGames = filteredGames.filter(g => g.platform === state.activePlatform);
-        DOM.filterBadge.classList.remove('hidden');
-        DOM.filterName.innerText = state.activePlatform;
+        if(DOM.filterBadge) {
+            DOM.filterBadge.classList.remove('hidden');
+            if(DOM.filterName) DOM.filterName.innerText = state.activePlatform;
+        }
     } else {
-        DOM.filterBadge.classList.add('hidden');
+        if(DOM.filterBadge) DOM.filterBadge.classList.add('hidden');
     }
 
-    renderGrid(filteredGames, isShared);
+    // 3. Renderização
     renderKPIs(state.games, isShared);
+    renderGrid(filteredGames, isShared);
     renderChart(state.games, state.chartMode);
 };
 
 // --- GRID ---
 const renderGrid = (games, isShared) => {
+    const DOM = getDOM();
+    if(!DOM.grid) return;
     DOM.grid.innerHTML = '';
     
     if (games.length === 0) {
-        DOM.grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted); font-size:1.1rem;">Nada encontrado.</div>`;
+        DOM.grid.innerHTML = `
+            <div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted);">
+                <i class="fa-solid fa-ghost fa-3x" style="margin-bottom:20px; opacity:0.3;"></i>
+                <p>Nenhum jogo encontrado nesta seção.</p>
+            </div>`;
         return;
     }
 
@@ -83,30 +103,27 @@ const renderGrid = (games, isShared) => {
         const card = document.createElement('div');
         card.className = 'game-card';
         
-        // Se for compartilhado, remove o clique de edição
         if(!isShared) {
             card.onclick = () => window.editGame(game.id);
         } else {
             card.style.cursor = 'default';
-            card.onclick = null; // Remove ação
         }
 
         const badgeClass = getBadgeClass(game.status);
         const bgImage = game.image_url || 'https://via.placeholder.com/400x600?text=No+Cover';
         
-        // Lógica de Preço (Ocultar se for compartilhado)
         let priceDisplay = '';
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
                 const sign = profit >= 0 ? '+' : '';
-                priceDisplay = `<span class="${profit >= 0 ? 'text-green' : 'text-danger'}">${sign} R$ ${profit.toFixed(2)}</span>`;
+                const colorClass = profit >= 0 ? 'text-green' : 'text-danger';
+                // Formata sem o R$ para customizar
+                const val = formatMoney(profit).replace('R$', '').trim();
+                priceDisplay = `<span class="${colorClass}" style="font-weight:bold;">${sign} R$ ${val}</span>`;
             } else {
-                priceDisplay = `R$ ${(parseFloat(game.price_paid) || 0).toFixed(2)}`;
+                priceDisplay = formatMoney(game.price_paid);
             }
-        } else {
-            // Visitante vê apenas um icone ou nada
-            priceDisplay = `<span style="font-size:0.8rem; opacity:0.5">---</span>`;
         }
 
         card.innerHTML = `
@@ -115,7 +132,7 @@ const renderGrid = (games, isShared) => {
                 <div class="card-overlay"></div>
             </div>
             <div class="card-body">
-                <span class="card-platform">${game.platform || 'Desconhecido'}</span>
+                <span class="card-platform">${game.platform || 'Outros'}</span>
                 <h3 class="card-title">${game.title}</h3>
                 <div class="card-footer">
                     <div class="price-tag">${priceDisplay}</div>
@@ -128,126 +145,127 @@ const renderGrid = (games, isShared) => {
 };
 
 const getBadgeClass = (status) => {
-    switch (status) {
-        case 'Vendido': return 'bg-sold';
-        case 'Jogando': return 'bg-playing';
-        case 'Platinado': return 'bg-plat';
-        case 'Backlog': return 'bg-backlog';
-        default: return 'bg-backlog';
-    }
+    const map = {
+        'Vendido': 'bg-sold',
+        'Jogando': 'bg-playing',
+        'Platinado': 'bg-plat',
+        'Zerado': 'bg-plat',
+        'Backlog': 'bg-backlog'
+    };
+    return map[status] || 'bg-backlog';
 };
 
 // --- KPIs ---
-const renderKPIs = (allGames, isShared) => {
+const renderKPIs = (allGames = [], isShared = false) => {
+    const DOM = getDOM();
     if (!DOM.kpi) return;
     
     const totalJogos = allGames.length;
-    const finalizados = allGames.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
-    const backlog = allGames.filter(g => ['Backlog', 'Coleção'].includes(g.status)).length;
-    const taxaConclusao = totalJogos > 0 ? Math.round((finalizados / totalJogos) * 100) : 0;
     
-    // Se for compartilhado, renderiza apenas KPIs seguros
-    if (isShared) {
+    // Tratamento para estado inicial vazio
+    if (totalJogos === 0) {
         DOM.kpi.innerHTML = `
-            <div class="kpi-card">
-                <div>
-                    <span class="kpi-label">Coleção Pública</span>
-                    <div class="kpi-value">${totalJogos} JOGOS</div>
-                </div>
-                <i class="fa-solid fa-layer-group fa-3x" style="opacity:0.2; color:var(--primary)"></i>
-            </div>
-
-            <div class="kpi-card">
-                <div style="width: 100%">
-                    <div style="display:flex; justify-content:space-between;">
-                        <span class="kpi-label">Taxa de Conclusão</span>
-                        <span style="font-family:var(--font-num); color:var(--success)">${taxaConclusao}%</span>
-                    </div>
-                    <div class="progress-container">
-                        <div class="progress-bar" style="width: ${taxaConclusao}%; background:var(--success)"></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.75rem; color:var(--text-muted);">
-                        <span>${finalizados} Zerados</span>
-                        <span>${backlog} Restantes</span>
-                    </div>
-                </div>
-            </div>
+            <div class="kpi-card"><div><span class="kpi-label">Coleção</span><div class="kpi-value">0</div></div></div>
+            <div class="kpi-card"><div><span class="kpi-label">Progresso</span><div class="kpi-value">0%</div></div></div>
+            ${!isShared ? '<div class="kpi-card"><div><span class="kpi-label">Investido</span><div class="kpi-value">R$ 0</div></div></div>' : ''}
         `;
-        // Ajusta grid para 2 colunas apenas quando compartilhado
-        DOM.kpi.style.gridTemplateColumns = "1fr 1fr"; 
         return;
     }
 
-    // MODO DONO (Mostra Dinheiro)
-    DOM.kpi.style.gridTemplateColumns = ""; // Reseta grid
+    const finalizados = allGames.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
+    const backlog = allGames.filter(g => ['Backlog', 'Coleção'].includes(g.status)).length;
+    const taxaConclusao = Math.round((finalizados / totalJogos) * 100);
+    
     const totalInvestido = allGames.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
     const vendidos = allGames.filter(g => g.status === 'Vendido');
     const totalRecuperado = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
-    
-    DOM.kpi.innerHTML = `
-        <div class="kpi-card">
-            <div>
-                <span class="kpi-label">Investimento Líquido <span class="badge-pro">PRO</span></span>
-                <div class="kpi-value">R$ ${(totalInvestido - totalRecuperado).toFixed(2)}</div>
-                <small style="color:var(--text-muted); font-size:0.7rem">(Gasto R$ ${totalInvestido.toFixed(0)} - Recup. R$ ${totalRecuperado.toFixed(0)})</small>
-            </div>
-            <i class="fa-solid fa-wallet fa-2x" style="opacity:0.2; color:#FFD700"></i>
-        </div>
 
-        <div class="kpi-card">
-            <div style="width: 100%">
-                <div style="display:flex; justify-content:space-between;">
-                    <span class="kpi-label">Taxa de Conclusão</span>
-                    <span style="font-family:var(--font-num); color:var(--primary)">${taxaConclusao}%</span>
-                </div>
-                <div class="progress-container">
-                    <div class="progress-bar" style="width: ${taxaConclusao}%"></div>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.75rem; color:var(--text-muted);">
-                    <span>${finalizados} Finalizados</span>
-                    <span>${backlog} Restantes</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="kpi-card">
-             <div>
-                <span class="kpi-label">Valor em Vendas</span>
-                <div class="kpi-value text-green">R$ ${totalRecuperado.toFixed(2)}</div>
-            </div>
-            <i class="fa-solid fa-hand-holding-dollar fa-2x" style="opacity:0.2; color:var(--success)"></i>
-        </div>
-    `;
+    if (isShared) {
+        DOM.kpi.innerHTML = generateVisitorKPI(totalJogos, taxaConclusao);
+    } else {
+        const investimentoLiq = totalInvestido - totalRecuperado;
+        DOM.kpi.innerHTML = generateOwnerKPI(
+            formatMoney(investimentoLiq),
+            taxaConclusao,
+            formatMoney(totalRecuperado)
+        );
+    }
 };
+
+const generateVisitorKPI = (total, taxa) => `
+    <div class="kpi-card">
+        <div><span class="kpi-label">Jogos na Base</span><div class="kpi-value">${total}</div></div>
+        <i class="fa-solid fa-layer-group fa-2x" style="opacity:0.2;"></i>
+    </div>
+    <div class="kpi-card">
+        <div style="width:100%">
+            <span class="kpi-label">Conclusão</span>
+            <div style="display:flex; justify-content:space-between; align-items:center">
+                <div class="kpi-value" style="color:var(--success)">${taxa}%</div>
+                <i class="fa-solid fa-trophy fa-2x" style="opacity:0.2;"></i>
+            </div>
+            <div class="progress-container"><div class="progress-bar" style="width: ${taxa}%; background:var(--success)"></div></div>
+        </div>
+    </div>
+`;
+
+const generateOwnerKPI = (investLiq, taxa, recuperado) => `
+    <div class="kpi-card">
+        <div>
+            <span class="kpi-label">Investimento Líquido <span class="badge-pro">PRO</span></span>
+            <div class="kpi-value">${investLiq}</div>
+        </div>
+        <i class="fa-solid fa-wallet fa-2x" style="opacity:0.2; color:#FFD700"></i>
+    </div>
+    <div class="kpi-card">
+        <div style="width: 100%">
+            <span class="kpi-label">Taxa de Conclusão</span>
+            <div style="display:flex; justify-content:space-between; align-items:baseline">
+                <span class="kpi-value" style="color:var(--primary)">${taxa}%</span>
+            </div>
+            <div class="progress-container"><div class="progress-bar" style="width: ${taxa}%"></div></div>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div><span class="kpi-label">Retorno Vendas</span><div class="kpi-value" style="color:var(--success)">${recuperado}</div></div>
+        <i class="fa-solid fa-hand-holding-dollar fa-2x" style="opacity:0.2; color:var(--success)"></i>
+    </div>
+`;
 
 // --- CHART ---
 let chartInstance = null;
 const renderChart = (games, mode = 'platform') => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
-    if (chartInstance) chartInstance.destroy();
+
+    // Destrói gráfico anterior se existir
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+
+    if (!games || games.length === 0) return;
 
     const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6'];
+    const config = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true, font: {family:'Inter'} } } }
+    };
 
     if (mode === 'platform') {
         const platforms = {};
         games.forEach(g => { platforms[g.platform] = (platforms[g.platform] || 0) + 1; });
+        
         chartInstance = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: Object.keys(platforms),
                 datasets: [{ data: Object.values(platforms), backgroundColor: colors, borderColor: '#0a0a0c', borderWidth: 2 }]
             },
-            options: {
-                responsive: true, maintainAspectRatio: false, cutout: '60%',
-                plugins: { legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true, font: {family:'Inter'} } } },
-                onClick: (evt, elements) => {
-                    if (elements.length > 0) {
-                        const index = elements[0].index;
-                        appStore.setState({ activePlatform: Object.keys(platforms)[index] });
-                    }
-                }
-            }
+            options: { ...config, cutout: '60%', onClick: (evt, el) => {
+                if(el.length > 0) appStore.setState({ activePlatform: Object.keys(platforms)[el[0].index] });
+            }}
         });
     } else if (mode === 'status') {
         const statuses = {};
@@ -256,25 +274,18 @@ const renderChart = (games, mode = 'platform') => {
             type: 'polarArea',
             data: {
                 labels: Object.keys(statuses),
-                datasets: [{ data: Object.values(statuses), backgroundColor: colors.map(c => c + '99'), borderColor: colors, borderWidth: 1 }]
+                datasets: [{ data: Object.values(statuses), backgroundColor: colors.map(c => c + '99'), borderColor: '#111', borderWidth: 1 }]
             },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } } },
-                plugins: { legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true } } }
-            }
+            options: { ...config, scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } } } }
         });
     } else if (mode === 'cost') {
-        // Se estiver no modo compartilhado, não deve mostrar nada ou deve ser bloqueado na renderApp,
-        // mas por segurança, filtramos aqui também.
-        if (appStore.get().isSharedMode) return;
-
+        if (appStore.get().isSharedMode) return; // Visitante não vê custo
         const sorted = [...games].sort((a,b) => b.price_paid - a.price_paid).slice(0, 5);
         chartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: sorted.map(g => g.title.length > 15 ? g.title.substring(0,15)+'...' : g.title),
-                datasets: [{ label: 'Custo (R$)', data: sorted.map(g => g.price_paid), backgroundColor: colors[1], borderRadius: 5 }]
+                datasets: [{ label: 'Custo (R$)', data: sorted.map(g => g.price_paid), backgroundColor: colors[1], borderRadius: 4 }]
             },
             options: {
                 indexAxis: 'y', responsive: true, maintainAspectRatio: false,
@@ -286,6 +297,8 @@ const renderChart = (games, mode = 'platform') => {
 };
 
 export const showToast = (msg, type = 'success') => {
+    const DOM = getDOM();
+    if(!DOM.toast) return;
     const el = document.createElement('div');
     el.className = `toast ${type}`;
     el.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'circle-check' : 'triangle-exclamation'}"></i> ${msg}`;
@@ -294,6 +307,7 @@ export const showToast = (msg, type = 'success') => {
 };
 
 export const toggleModal = (show) => {
+    const DOM = getDOM();
     if (show) DOM.modal.classList.remove('hidden');
     else DOM.modal.classList.add('hidden');
 };

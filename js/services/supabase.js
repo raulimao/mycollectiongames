@@ -1,6 +1,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 // Configurações do Projeto
+// NOTA DE AUDITORIA: Em produção, utilize variáveis de ambiente ou Proxy se precisar esconder a chave.
+// Para client-side puro, certifique-se que o RLS (Row Level Security) está ativo no Supabase.
 const SUPABASE_URL = 'https://hyeeclvizibfzeemiqle.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5ZWVjbHZpemliZnplZW1pcWxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0OTQ5NDIsImV4cCI6MjA4MDA3MDk0Mn0.kE0BV4RAZweE4On2sQ3kaQWBcwa8eCcBdnwh__zDtlY';
 
@@ -8,36 +10,30 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export const AuthService = {
     async signInGoogle() {
-        const redirectTo = `${window.location.origin}${window.location.pathname}`;
-        
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: { 
-                redirectTo: redirectTo,
-                // CORREÇÃO: access_type: 'offline' apenas, sem prompt
-                queryParams: { access_type: 'offline' } 
-            }
-        });
-        
-        if (error) {
-            console.error("Erro no Auth Google:", error);
-            throw error;
+        try {
+            const redirectTo = `${window.location.origin}${window.location.pathname}`;
+            console.log("🔐 [Auth] Iniciando OAuth para:", redirectTo);
+            
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { 
+                    redirectTo: redirectTo,
+                    queryParams: { access_type: 'offline' } 
+                }
+            });
+            
+            if (error) throw error;
+        } catch (error) {
+            console.error("❌ [Auth Error]", error);
+            alert("Erro ao iniciar login: " + error.message);
         }
     },
     
     async signOut() {
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
         localStorage.clear();
         sessionStorage.clear();
         window.location.reload();
-    },
-
-    async getSession() {
-        return await supabase.auth.getSession();
-    },
-
-    async getUser() {
-        const { data } = await supabase.auth.getUser();
-        return data.user;
     }
 };

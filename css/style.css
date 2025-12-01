@@ -1,7 +1,7 @@
 :root {
     /* Cores Base */
     --bg-dark: #0a0a0c;
-    --bg-card-glass: rgba(20, 20, 25, 0.6);
+    --bg-card-glass: rgba(20, 20, 25, 0.75);
     
     /* Paleta Neon Premium */
     --primary: #d946ef;
@@ -17,13 +17,21 @@
     --text-main: #ffffff;
     --text-muted: #9ca3af;
     
-    /* Gradientes Premium */
+    /* Gradientes */
     --grad-primary: linear-gradient(135deg, var(--primary), var(--secondary));
     --grad-glass-border: linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.4));
     --grad-card-overlay: linear-gradient(to top, rgba(10,10,12, 0.95) 0%, rgba(10,10,12, 0.4) 60%, transparent 100%);
 
     --font-ui: 'Inter', sans-serif;
     --font-num: 'Orbitron', sans-serif;
+    
+    /* Z-Index Layers (Sistema) */
+    --z-particles: -1;
+    --z-app: 10;
+    --z-header: 20;
+    --z-modal: 3000;
+    --z-toast: 4000;
+    --z-loader: 9999;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,15 +42,18 @@ body {
     font-family: var(--font-ui);
     min-height: 100vh;
     overflow-x: hidden;
+    position: relative;
+    /* Fallback visual se o particles.js falhar */
+    background-image: radial-gradient(circle at 50% 50%, #1a1a20 0%, #0a0a0c 100%);
 }
 
-/* Container de Partículas */
+/* --- CAMADAS --- */
+
 #particles-js {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
-    background-color: var(--bg-dark);
-    background-image: radial-gradient(circle at 50% 0%, rgba(217, 70, 239, 0.1), transparent 70%);
-    z-index: -1;
+    z-index: var(--z-particles) !important;
+    pointer-events: none;
 }
 
 .app-container {
@@ -50,9 +61,21 @@ body {
     margin: 0 auto;
     padding: 30px;
     padding-bottom: 80px;
+    position: relative;
+    z-index: var(--z-app);
+    opacity: 1;
+    transition: opacity 0.5s ease;
 }
 
-/* Header com Glow */
+.app-container.hidden {
+    opacity: 0;
+    pointer-events: none;
+    display: block !important; /* Mantém no DOM para layout, mas invisível */
+    height: 0; overflow: hidden; /* Colapsa */
+}
+
+/* --- HEADER --- */
+
 .glass-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 20px 30px; 
@@ -63,47 +86,65 @@ body {
     border-radius: 20px;
     border: 1px solid rgba(255,255,255,0.05);
     box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+    z-index: var(--z-header);
+    position: sticky; top: 20px; /* Sticky Header para melhor UX */
 }
 
-.logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary-glow); margin: 0; }
-.logo .icon { filter: drop-shadow(0 0 5px var(--primary)); margin-right: 10px; font-size: 1.5rem; }
-.user-profile { display: flex; align-items: center; gap: 20px; }
-.user-name { font-weight: 600; letter-spacing: 0.5px; }
+.logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary-glow); margin: 0; display: inline-block; vertical-align: middle; }
+.logo .icon { filter: drop-shadow(0 0 5px var(--primary)); margin-right: 10px; font-size: 1.5rem; vertical-align: middle; }
+.pro-badge { font-size: 0.4em; color: var(--primary); text-shadow: 0 0 10px var(--primary); vertical-align: super; margin-left: 5px; }
+
+.user-profile { display: flex; align-items: center; gap: 15px; }
+.user-name { font-weight: 600; letter-spacing: 0.5px; color: white; display: none; } /* Esconde em mobile por padrão */
+@media(min-width: 768px) { .user-name { display: block; } }
+
 .avatar-img { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--secondary); box-shadow: 0 0 10px var(--secondary-glow); object-fit: cover; }
 
-/* Layouts */
+/* --- UTILS --- */
+.hidden { display: none !important; }
+
+.row-flex { display: flex; gap: 15px; width: 100%; }
+.flex-1 { flex: 1; }
+@media(max-width: 600px) { .row-flex { flex-direction: column; gap: 0; } }
+
+/* --- GRID LAYOUTS --- */
 .dashboard-grid {
     display: grid;
     grid-template-columns: 1fr 2fr;
     gap: 25px;
     margin-bottom: 35px;
 }
-
-@media (max-width: 900px) {
-    .dashboard-grid { grid-template-columns: 1fr; }
-}
+@media (max-width: 900px) { .dashboard-grid { grid-template-columns: 1fr; } }
 
 .games-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 25px;
     margin-top: 30px;
+    min-height: 200px; /* Evita colapso se vazio */
 }
 
-/* Features Premium (Barra de Progresso) */
+/* --- LOADER & OVERLAYS --- */
+#globalLoader {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: #000;
+    z-index: var(--z-loader);
+    display: flex; justify-content: center; align-items: center; flex-direction: column;
+    transition: opacity 0.5s ease, visibility 0.5s;
+}
+
+#globalLoader.hidden {
+    opacity: 0;
+    visibility: hidden; /* Garante que o mouse passe através */
+    display: flex !important; /* Sobrescreve o display:none da classe .hidden para usar opacidade */
+}
+
+.loader-text { margin-top: 15px; color: #fff; font-family: var(--font-num); letter-spacing: 2px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
 .progress-container {
-    width: 100%;
-    background: rgba(255,255,255,0.1);
-    border-radius: 10px;
-    height: 8px;
-    margin-top: 10px;
-    overflow: hidden;
-    position: relative;
+    width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; margin-top: 10px; overflow: hidden; position: relative;
 }
 .progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, var(--primary), var(--secondary));
-    width: 0%;
-    transition: width 1s ease-in-out;
-    box-shadow: 0 0 10px var(--primary-glow);
+    height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); width: 0%; transition: width 1s ease-in-out; box-shadow: 0 0 10px var(--primary-glow);
 }
