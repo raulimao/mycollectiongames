@@ -6,7 +6,7 @@ import { renderApp, showToast, toggleModal } from './modules/ui.js';
 let editingId = null;
 let isInitializing = false;
 
-// Lista padrão para quando abrir o modal vazio
+// Lista padrão (Fallback)
 const DEFAULT_PLATFORMS = [
     "PC", "PlayStation 5", "PlayStation 4", "Xbox Series X/S", 
     "Xbox One", "Nintendo Switch", "Steam Deck", "Mobile", "Outros"
@@ -153,7 +153,7 @@ const updateUserProfileUI = (profile) => {
     }
 };
 
-// Função auxiliar para resetar o select de plataformas
+// Reseta para padrão (usado no botão Novo Jogo)
 const resetPlatformOptions = (selectedPlatform = null) => {
     const select = document.getElementById('inputPlatform');
     if(!select) return;
@@ -167,6 +167,69 @@ const resetPlatformOptions = (selectedPlatform = null) => {
         if(selectedPlatform && p === selectedPlatform) opt.selected = true;
         select.appendChild(opt);
     });
+};
+
+// NOVO: Busca plataformas ao editar um jogo existente
+const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
+    const select = document.getElementById('inputPlatform');
+    
+    // Mostra estado de carregamento no select sem apagar o valor atual visualmente se possível
+    // Mas para garantir consistência, vamos criar um option temporário
+    const tempOpt = document.createElement('option');
+    tempOpt.text = "Atualizando compatibilidade...";
+    tempOpt.disabled = true;
+    select.insertBefore(tempOpt, select.firstChild);
+    
+    try {
+        const results = await GameService.searchRawg(gameTitle);
+        
+        // Pega o primeiro resultado (geralmente é o jogo certo)
+        const match = results[0]; 
+
+        if (match && match.platforms && match.platforms.length > 0) {
+            select.innerHTML = ''; // Limpa as opções padrão
+            
+            // Lógica de Placeholder se houver muitas opções
+            if (match.platforms.length > 1) {
+                const placeholder = document.createElement('option');
+                placeholder.text = "Selecione a versão...";
+                placeholder.value = "";
+                placeholder.disabled = true;
+                select.appendChild(placeholder);
+            }
+
+            let foundCurrent = false;
+
+            // Popula com dados da API
+            match.platforms.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.platform.name;
+                opt.text = p.platform.name;
+                
+                if (p.platform.name === currentPlatform) {
+                    opt.selected = true;
+                    foundCurrent = true;
+                }
+                select.appendChild(opt);
+            });
+
+            // Fallback: Se a plataforma salva (ex: "Outros") não estiver na API, adiciona ela manualmente
+            if (!foundCurrent && currentPlatform) {
+                const opt = document.createElement('option');
+                opt.value = currentPlatform;
+                opt.text = currentPlatform + " (Atual)";
+                opt.selected = true;
+                select.appendChild(opt);
+            }
+
+        } else {
+            // Se API falhar, remove o "Carregando" e mantem o que estava (resetPlatformOptions já rodou antes)
+            tempOpt.remove();
+        }
+    } catch (e) {
+        console.warn("Não foi possível buscar plataformas atualizadas.");
+        tempOpt.remove();
+    }
 };
 
 // --- EVENTS ---
@@ -259,15 +322,14 @@ const openGameModal = (gameId = null) => {
         btnDelete.classList.remove('hidden');
         const game = appStore.get().games.find(g => g.id === gameId);
         
-        // Reseta plataformas padrão mas seleciona a correta
+        // 1. Preenche inicialmente com as opções padrão para exibir rápido
         resetPlatformOptions(game?.platform);
         
         if(game) {
             document.getElementById('inputGameName').value = game.title;
-            // O valor do platform já foi tratado no resetPlatformOptions
+            // Verifica se a plataforma salva está na lista padrão, se não, adiciona
+            const select = document.getElementById('inputPlatform');
             if(game.platform && !DEFAULT_PLATFORMS.includes(game.platform)) {
-                // Se a plataforma salva não estiver na lista padrão, adiciona ela
-                const select = document.getElementById('inputPlatform');
                 const opt = document.createElement('option');
                 opt.value = game.platform;
                 opt.innerText = game.platform;
@@ -280,11 +342,14 @@ const openGameModal = (gameId = null) => {
             document.getElementById('inputSoldPrice').value = game.price_sold;
             document.getElementById('inputImage').value = game.image_url;
             if(game.status === 'Vendido') document.getElementById('soldGroup').classList.remove('hidden');
+
+            // 2. Dispara busca na API para restringir as plataformas (Async)
+            loadPlatformsForExistingGame(game.title, game.platform);
         }
     } else {
         modalTitle.innerText = "NOVO JOGO";
         btnDelete.classList.add('hidden');
-        resetPlatformOptions(); // Garante lista limpa para novo jogo
+        resetPlatformOptions();
     }
     toggleModal(true);
 };
@@ -352,18 +417,26 @@ const setupRawgSearch = () => {
                 el.className = 'api-item';
                 el.innerHTML = `<img src="${g.background_image || ''}"><div class="api-info"><strong>${g.name}</strong></div>`;
                 
-                // --- AQUI ESTÁ A MÁGICA DA PLATAFORMA ---
+                // SELEÇÃO INTELIGENTE (NOVO JOGO)
                 el.onclick = () => {
                     document.getElementById('inputGameName').value = g.name;
                     document.getElementById('inputImage').value = g.background_image;
                     resultsDiv.classList.add('hidden');
                     
                     const select = document.getElementById('inputPlatform');
-                    select.innerHTML = ''; // Limpa as opções padrão
+                    select.innerHTML = ''; 
                     
-                    // Verifica se a API retornou plataformas
-                    if (g.platforms && g.platforms.length > 0) {
-                        // Adiciona uma opção placeholder
+                    const platforms = g.platforms || [];
+
+                    if (platforms.length === 1) {
+                        const pName = platforms[0].platform.name;
+                        const opt = document.createElement('option');
+                        opt.value = pName;
+                        opt.text = pName;
+                        opt.selected = true;
+                        select.appendChild(opt);
+                    } 
+                    else if (platforms.length > 1) {
                         const placeholder = document.createElement('option');
                         placeholder.text = "Selecione a versão...";
                         placeholder.value = "";
@@ -371,15 +444,14 @@ const setupRawgSearch = () => {
                         placeholder.selected = true;
                         select.appendChild(placeholder);
 
-                        // Cria uma opção para cada plataforma real do jogo
-                        g.platforms.forEach(p => {
+                        platforms.forEach(p => {
                             const opt = document.createElement('option');
-                            opt.value = p.platform.name; // Ex: "PlayStation 5"
+                            opt.value = p.platform.name;
                             opt.text = p.platform.name;
                             select.appendChild(opt);
                         });
-                    } else {
-                        // Fallback se a API não der plataformas
+                    } 
+                    else {
                         resetPlatformOptions();
                     }
                 };
