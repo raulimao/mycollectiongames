@@ -136,5 +136,28 @@ export const GameService = {
             const data = await res.json();
             return data.results || [];
         } catch (e) { return []; }
+    },
+
+    // NOVO: Busca detalhes profundos para o Modal Rico
+    async getGameDetails(gameName) {
+        if (!gameName) return null;
+        try {
+            // Busca exata ou melhor match
+            const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(gameName)}&page_size=1`);
+            const data = await res.json();
+            
+            if (!data.results || data.results.length === 0) return null;
+            
+            const gameBasic = data.results[0];
+            
+            // Busca detalhes completos (precisa do ID para descrição e website)
+            const resDetails = await fetch(`https://api.rawg.io/api/games/${gameBasic.id}?key=${RAWG_API_KEY}`);
+            const fullData = await resDetails.json();
+            
+            return fullData;
+        } catch (e) {
+            console.warn("Falha ao buscar detalhes:", e);
+            return null;
+        }
     }
 };

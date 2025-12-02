@@ -102,7 +102,8 @@
             <div class="tabs-group">
                 <button class="tab-btn active" data-tab="collection">Coleção</button>
                 <button class="tab-btn" data-tab="backlog">Backlog</button>
-                <button class="tab-btn" data-tab="wishlist">Desejados</button> <button class="tab-btn" data-tab="sold">Vendidos</button>
+                <button class="tab-btn" data-tab="wishlist">Desejados</button>
+                <button class="tab-btn" data-tab="store"><i class="fa-solid fa-shop"></i> Loja</button> <button class="tab-btn" data-tab="sold">Vendidos</button>
             </div>
             <div class="filters-group">
                 <div class="search-box">
@@ -147,7 +148,7 @@
                         </select>
                     </div>
                     <div class="input-group flex-1">
-                        <label>Preço Pago / Estimado (R$)</label>
+                        <label for="inputPrice">Preço Pago (R$)</label>
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
@@ -156,7 +157,8 @@
                     <div class="input-group flex-1">
                         <label>Status Atual</label>
                         <select id="inputStatus" required>
-                            <option value="Desejado" style="color: var(--warning)">★ Quero Comprar</option> <option value="Coleção">Na Estante</option>
+                            <option value="Desejado" style="color: var(--warning)">★ Quero Comprar</option>
+                            <option value="Coleção">Na Estante</option>
                             <option value="Backlog">Backlog</option>
                             <option value="Jogando">Jogando Agora</option>
                             <option value="Zerado">Zerado</option>
@@ -179,6 +181,58 @@
                     <button type="submit" class="btn-primary">Salvar Jogo</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="gameDetailModal" class="modal-overlay hidden" style="z-index: 3500;">
+        <div class="modal-content glass-panel" style="max-width: 800px; padding: 0; overflow: hidden;">
+            
+            <div id="detailHero" style="height: 200px; background-size: cover; background-position: center; position: relative;">
+                <div style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);"></div>
+                <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn" style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
+                
+                <div style="position: absolute; bottom: 20px; left: 30px;">
+                    <div id="detailMetacritic" class="badge bg-plat" style="margin-bottom: 10px; display: inline-block;">MC: --</div>
+                    <h2 id="detailTitle" style="font-family: var(--font-num); font-size: 2rem; text-shadow: 0 0 10px rgba(0,0,0,0.8);">Titulo do Jogo</h2>
+                </div>
+            </div>
+
+            <div style="padding: 30px; display: flex; gap: 30px; flex-wrap: wrap;">
+                <div style="flex: 2; min-width: 300px;">
+                    <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO</h4>
+                    <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">
+                        Carregando informações da rede...
+                    </p>
+                    
+                    <div style="margin-top: 25px; display: flex; gap: 10px;">
+                        <a id="detailLink" href="#" target="_blank" class="btn-primary" style="text-decoration: none; font-size: 0.8rem;">
+                            <i class="fa-solid fa-globe"></i> SITE OFICIAL
+                        </a>
+                        <button id="btnEditFromDetail" class="btn-small hidden">
+                            <i class="fa-solid fa-pen"></i> EDITAR DADOS
+                        </button>
+                    </div>
+                </div>
+
+                <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <h4 style="color: var(--primary); margin-bottom: 15px; font-family: var(--font-num);">NO COFRE</h4>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <span style="display: block; font-size: 0.75rem; color: #888;">PLATAFORMA</span>
+                        <strong id="detailPlatform" style="font-size: 1.1rem; color: white;">--</strong>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <span style="display: block; font-size: 0.75rem; color: #888;">STATUS</span>
+                        <span id="detailStatusBadge" class="badge">--</span>
+                    </div>
+
+                    <div>
+                        <span id="detailPriceLabel" style="display: block; font-size: 0.75rem; color: #888;">VALOR</span>
+                        <strong id="detailPrice" style="font-size: 1.2rem; color: var(--success);">--</strong>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -1,4 +1,5 @@
 import { appStore } from './store.js';
+import { GameService } from '../services/api.js';
 
 // Cache DOM Helper
 const getDOM = () => ({
@@ -10,10 +11,9 @@ const getDOM = () => ({
     filterName: document.getElementById('filterName')
 });
 
-// Funções Expostas ao Window (Necessário para onclick no HTML)
+// Funções Expostas ao Window
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
-    // Encontra o botão certo baseado na ordem ou texto
     const tabs = document.querySelectorAll('.chart-tab');
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
@@ -36,17 +36,20 @@ export const renderApp = (state) => {
     const DOM = getDOM();
     const isShared = state.isSharedMode;
 
-    // 1. Controle de Visibilidade UI (Visitante vs Dono)
+    // 1. Controle de Visibilidade UI
     const controlsPanel = document.querySelector('.controls-panel');
     const costTab = document.querySelectorAll('.chart-tab')[2];
     const headerActions = document.getElementById('headerActions');
+    const btnAddGame = document.getElementById('btnOpenAddModal');
 
     if(isShared) {
-        if(controlsPanel) controlsPanel.classList.add('hidden');
-        if(costTab) costTab.style.display = 'none';
+        if(controlsPanel) controlsPanel.classList.remove('hidden'); 
+        if(btnAddGame) btnAddGame.classList.add('hidden'); 
+        if(costTab) costTab.style.display = 'none'; 
         if(headerActions) headerActions.innerHTML = `<span class="badge bg-playing">Visitando: ${state.sharedProfileName}</span>`;
     } else {
         if(controlsPanel) controlsPanel.classList.remove('hidden');
+        if(btnAddGame) btnAddGame.classList.remove('hidden');
         if(costTab) costTab.style.display = 'inline-flex';
     }
 
@@ -55,23 +58,23 @@ export const renderApp = (state) => {
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
-    // Filtro Lógico
+    // Lógica de Filtros Atualizada
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'wishlist') {
-        // NOVO: Filtro da Lista de Desejos
         filteredGames = filteredGames.filter(g => g.status === 'Desejado');
+    } else if (filter === 'store') {
+        // NOVO FILTRO: LOJA
+        filteredGames = filteredGames.filter(g => g.status === 'À venda');
     } else if (filter === 'backlog') {
         filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
     } else {
-        // COLEÇÃO (Padrão): Exclui Vendidos, Backlog e agora também o Desejado
+        // COLEÇÃO: Exclui Vendidos, Backlog, Desejado e À venda (opcional, mas geralmente Coleção é posse permanente)
         filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
     }
 
-    // Filtro de Busca
     if (term) filteredGames = filteredGames.filter(g => g.title.toLowerCase().includes(term));
 
-    // Filtro de Gráfico
     if (state.activePlatform) {
         filteredGames = filteredGames.filter(g => g.platform === state.activePlatform);
         if(DOM.filterBadge) {
@@ -83,10 +86,9 @@ export const renderApp = (state) => {
     }
 
     // 3. Renderização
-    // Passamos o filtro atual para renderKPIs saber se mostra custos ou estimativas
-    renderKPIs(state.games, isShared, filter); 
+    renderKPIs(state.games, isShared, filter);
     renderGrid(filteredGames, isShared);
-    renderChart(state.games, state.chartMode);
+    renderChart(filteredGames, state.chartMode, filter); 
 };
 
 // --- GRID ---
@@ -108,16 +110,14 @@ const renderGrid = (games, isShared) => {
         const card = document.createElement('div');
         card.className = 'game-card';
         
-        if(!isShared) {
-            card.onclick = () => window.editGame(game.id);
-        } else {
-            card.style.cursor = 'default';
-        }
+        card.onclick = () => openGameDetails(game, isShared);
 
         const badgeClass = getBadgeClass(game.status);
         const bgImage = game.image_url || 'https://via.placeholder.com/400x600?text=No+Cover';
+        const wishIcon = game.status === 'Desejado' ? '<i class="fa-solid fa-star" style="color:var(--warning); margin-right:5px;"></i>' : '';
         
         let priceDisplay = '';
+
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -125,9 +125,19 @@ const renderGrid = (games, isShared) => {
                 const colorClass = profit >= 0 ? 'text-green' : 'text-danger';
                 const val = formatMoney(profit).replace('R$', '').trim();
                 priceDisplay = `<span class="${colorClass}" style="font-weight:bold;">${sign} R$ ${val}</span>`;
+            } else if (game.status === 'À venda') {
+                 // Dono vê por quanto está vendendo
+                 priceDisplay = `<span style="color:var(--success)">${formatMoney(game.price_sold)}</span>`;
             } else {
-                // Para Wishlist, price_paid funciona como "Preço Esperado"
                 priceDisplay = formatMoney(game.price_paid);
+            }
+        } else {
+            // LÓGICA DO VISITANTE
+            if (game.status === 'À venda') {
+                const valorVenda = game.price_sold || 0;
+                priceDisplay = `<span style="color:var(--success); font-weight:bold;">${formatMoney(valorVenda)}</span>`;
+            } else {
+                priceDisplay = ''; 
             }
         }
 
@@ -138,15 +148,95 @@ const renderGrid = (games, isShared) => {
             </div>
             <div class="card-body">
                 <span class="card-platform">${game.platform || 'Outros'}</span>
-                <h3 class="card-title">${game.title}</h3>
+                <h3 class="card-title">${wishIcon}${game.title}</h3>
                 <div class="card-footer">
-                    <div class="price-tag">${priceDisplay}</div>
+                    <div class="price-tag" style="${priceDisplay ? '' : 'display:none'}">${priceDisplay}</div>
                     <span class="badge ${badgeClass}">${game.status}</span>
                 </div>
             </div>
         `;
         DOM.grid.appendChild(card);
     });
+};
+
+// --- MODAL RICO (HUB) ---
+const openGameDetails = async (game, isShared) => {
+    const modal = document.getElementById('gameDetailModal');
+    if(!modal) return;
+
+    document.getElementById('detailTitle').innerText = game.title.toUpperCase();
+    document.getElementById('detailHero').style.backgroundImage = `url('${game.image_url}')`;
+    document.getElementById('detailPlatform').innerText = game.platform;
+    
+    const badge = document.getElementById('detailStatusBadge');
+    badge.innerText = game.status;
+    badge.className = `badge ${getBadgeClass(game.status)}`;
+
+    const priceEl = document.getElementById('detailPrice');
+    const priceLabel = document.getElementById('detailPriceLabel');
+    
+    if (game.status === 'Desejado') {
+        priceLabel.innerText = "CUSTO ESTIMADO";
+        priceEl.style.color = "var(--warning)";
+    } else if (game.status === 'À venda') {
+         priceLabel.innerText = "VALOR DE VENDA";
+         priceEl.style.color = "var(--success)";
+    } else {
+        priceLabel.innerText = "VALOR PAGO";
+        priceEl.style.color = "var(--success)";
+    }
+    
+    // Configura Valor Exibido
+    if (isShared) {
+        if (game.status === 'À venda') {
+            priceEl.innerText = formatMoney(game.price_sold || 0);
+        } else {
+            priceEl.innerText = "---";
+        }
+    } else {
+        const valor = (game.status === 'À venda' || game.status === 'Vendido') ? game.price_sold : game.price_paid;
+        priceEl.innerText = formatMoney(valor || 0);
+    }
+
+    const btnEdit = document.getElementById('btnEditFromDetail');
+    if (isShared) {
+        btnEdit.classList.add('hidden');
+    } else {
+        btnEdit.classList.remove('hidden');
+        btnEdit.onclick = () => {
+            modal.classList.add('hidden');
+            window.editGame(game.id);
+        };
+    }
+
+    modal.classList.remove('hidden');
+
+    const descEl = document.getElementById('detailDesc');
+    const mcEl = document.getElementById('detailMetacritic');
+    const linkEl = document.getElementById('detailLink');
+    
+    descEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Buscando dados na rede...';
+
+    const details = await GameService.getGameDetails(game.title);
+    
+    if (details) {
+        const cleanDesc = details.description_raw || details.description || "Sem descrição disponível.";
+        descEl.innerText = cleanDesc.length > 400 ? cleanDesc.substring(0, 400) + "..." : cleanDesc;
+        
+        mcEl.innerText = details.metacritic ? `MC: ${details.metacritic}` : "MC: N/A";
+        mcEl.style.display = 'inline-block';
+        
+        if (details.website) {
+            linkEl.href = details.website;
+            linkEl.classList.remove('hidden');
+        } else {
+            linkEl.classList.add('hidden');
+        }
+    } else {
+        descEl.innerText = "Detalhes adicionais não encontrados.";
+        mcEl.style.display = 'none';
+        linkEl.classList.add('hidden');
+    }
 };
 
 const getBadgeClass = (status) => {
@@ -156,7 +246,8 @@ const getBadgeClass = (status) => {
         'Platinado': 'bg-plat',
         'Zerado': 'bg-plat',
         'Backlog': 'bg-backlog',
-        'Desejado': 'bg-wishlist' // Badge Nova
+        'Desejado': 'bg-wishlist',
+        'À venda': 'bg-sold'
     };
     return map[status] || 'bg-backlog';
 };
@@ -166,61 +257,39 @@ const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection
     const DOM = getDOM();
     if (!DOM.kpi) return;
     
-    // Separação Lógica: O que eu tenho vs O que eu quero
-    const jogosPossuidos = allGames.filter(g => g.status !== 'Desejado');
+    const jogosNaBase = allGames.filter(g => g.status !== 'Desejado' && g.status !== 'Vendido');
     const jogosDesejados = allGames.filter(g => g.status === 'Desejado');
+    const jogosAVenda = allGames.filter(g => g.status === 'À venda');
     
-    const totalJogos = jogosPossuidos.length;
+    const finalizados = jogosNaBase.filter(g => ['Zerado', 'Platinado'].includes(g.status)).length;
+    const totalBaseCount = jogosNaBase.length;
+    const taxaConclusao = totalBaseCount > 0 ? Math.round((finalizados / totalBaseCount) * 100) : 0;
     
-    // Tratamento para estado vazio geral
-    if (totalJogos === 0 && jogosDesejados.length === 0) {
-        DOM.kpi.innerHTML = `
-            <div class="kpi-card"><div><span class="kpi-label">Coleção</span><div class="kpi-value">0</div></div></div>
-            <div class="kpi-card"><div><span class="kpi-label">Progresso</span><div class="kpi-value">0%</div></div></div>
-            ${!isShared ? '<div class="kpi-card"><div><span class="kpi-label">Investido</span><div class="kpi-value">R$ 0</div></div></div>' : ''}
-        `;
-        return;
-    }
-
-    // Métricas Padrão (Baseadas na POSSE)
-    const finalizados = jogosPossuidos.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
-    const taxaConclusao = totalJogos > 0 ? Math.round((finalizados / totalJogos) * 100) : 0;
-    
-    const totalInvestido = jogosPossuidos.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-    const vendidos = jogosPossuidos.filter(g => g.status === 'Vendido');
+    const totalInvestido = jogosNaBase.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
+    const vendidos = allGames.filter(g => g.status === 'Vendido');
     const totalRecuperado = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
 
     if (isShared) {
-        DOM.kpi.innerHTML = generateVisitorKPI(totalJogos, taxaConclusao);
+        DOM.kpi.innerHTML = generateVisitorKPI(totalBaseCount, taxaConclusao);
     } else {
-        // Se a aba for Wishlist, mostra KPIs de planejamento financeiro
         if (currentFilter === 'wishlist') {
             const estimativaCusto = jogosDesejados.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-            
             DOM.kpi.innerHTML = `
-                <div class="kpi-card">
-                    <div><span class="kpi-label">Na Lista</span><div class="kpi-value" style="color:var(--warning)">${jogosDesejados.length}</div></div>
-                    <i class="fa-solid fa-star fa-2x" style="opacity:0.2; color:var(--warning)"></i>
-                </div>
-                 <div class="kpi-card">
-                    <div>
-                        <span class="kpi-label">Custo Estimado</span>
-                        <div class="kpi-value">${formatMoney(estimativaCusto)}</div>
-                    </div>
-                    <i class="fa-solid fa-tag fa-2x" style="opacity:0.2;"></i>
-                </div>
-                 <div class="kpi-card" style="opacity: 0.5">
-                    <div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div>
-                </div>
+                <div class="kpi-card"><div><span class="kpi-label">Na Lista</span><div class="kpi-value" style="color:var(--warning)">${jogosDesejados.length}</div></div><i class="fa-solid fa-star fa-2x" style="opacity:0.2; color:var(--warning)"></i></div>
+                <div class="kpi-card"><div><span class="kpi-label">Custo Estimado</span><div class="kpi-value">${formatMoney(estimativaCusto)}</div></div><i class="fa-solid fa-tag fa-2x" style="opacity:0.2;"></i></div>
+                <div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div></div>
+            `;
+        } else if (currentFilter === 'store') {
+            // KPIs EXCLUSIVOS DA LOJA
+            const potencialReceita = jogosAVenda.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
+            DOM.kpi.innerHTML = `
+                <div class="kpi-card"><div><span class="kpi-label">Itens à Venda</span><div class="kpi-value" style="color:var(--success)">${jogosAVenda.length}</div></div><i class="fa-solid fa-shop fa-2x" style="opacity:0.2; color:var(--success)"></i></div>
+                <div class="kpi-card"><div><span class="kpi-label">Receita Estimada</span><div class="kpi-value" style="color:var(--success)">${formatMoney(potencialReceita)}</div></div><i class="fa-solid fa-sack-dollar fa-2x" style="opacity:0.2;"></i></div>
+                <div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Ticket Médio</span><div class="kpi-value">${jogosAVenda.length ? formatMoney(potencialReceita / jogosAVenda.length) : 'R$ 0'}</div></div></div>
             `;
         } else {
-            // KPI Padrão (Dono)
             const investimentoLiq = totalInvestido - totalRecuperado;
-            DOM.kpi.innerHTML = generateOwnerKPI(
-                formatMoney(investimentoLiq),
-                taxaConclusao,
-                formatMoney(totalRecuperado)
-            );
+            DOM.kpi.innerHTML = generateOwnerKPI(formatMoney(investimentoLiq), taxaConclusao, formatMoney(totalRecuperado));
         }
     }
 };
@@ -232,7 +301,7 @@ const generateVisitorKPI = (total, taxa) => `
     </div>
     <div class="kpi-card">
         <div style="width:100%">
-            <span class="kpi-label">Conclusão</span>
+            <span class="kpi-label">Conclusão da Base</span>
             <div style="display:flex; justify-content:space-between; align-items:center">
                 <div class="kpi-value" style="color:var(--success)">${taxa}%</div>
                 <i class="fa-solid fa-trophy fa-2x" style="opacity:0.2;"></i>
@@ -267,9 +336,17 @@ const generateOwnerKPI = (investLiq, taxa, recuperado) => `
 
 // --- CHART ---
 let chartInstance = null;
-const renderChart = (games, mode = 'platform') => {
+const renderChart = (games, mode = 'platform', context = 'collection') => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
+
+    const titleDeco = document.querySelector('.chart-title-deco');
+    if(titleDeco) {
+        let contextName = 'SYSTEM';
+        if (context === 'wishlist') contextName = 'WISHLIST';
+        if (context === 'store') contextName = 'STORE';
+        titleDeco.innerText = `ANALYTICS // ${contextName}`;
+    }
 
     if (chartInstance) {
         chartInstance.destroy();
@@ -279,6 +356,10 @@ const renderChart = (games, mode = 'platform') => {
     if (!games || games.length === 0) return;
 
     const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6'];
+    let barColor = colors[1];
+    if (context === 'wishlist') barColor = '#f59e0b'; // Laranja
+    if (context === 'store') barColor = '#00ff9d'; // Verde
+
     const config = {
         responsive: true,
         maintainAspectRatio: false,
@@ -312,12 +393,24 @@ const renderChart = (games, mode = 'platform') => {
         });
     } else if (mode === 'cost') {
         if (appStore.get().isSharedMode) return;
-        const sorted = [...games].sort((a,b) => b.price_paid - a.price_paid).slice(0, 5);
+        
+        const sorted = [...games].sort((a,b) => {
+            const priceA = context === 'store' ? a.price_sold : a.price_paid;
+            const priceB = context === 'store' ? b.price_sold : b.price_paid;
+            return priceB - priceA;
+        }).slice(0, 5);
+        
+        let label = 'Custo Real (R$)';
+        if (context === 'wishlist') label = 'Estimativa (R$)';
+        if (context === 'store') label = 'Valor Venda (R$)';
+
+        const dataPoints = sorted.map(g => context === 'store' ? g.price_sold : g.price_paid);
+
         chartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: sorted.map(g => g.title.length > 15 ? g.title.substring(0,15)+'...' : g.title),
-                datasets: [{ label: 'Custo (R$)', data: sorted.map(g => g.price_paid), backgroundColor: colors[1], borderRadius: 4 }]
+                datasets: [{ label: label, data: dataPoints, backgroundColor: barColor, borderRadius: 4 }]
             },
             options: {
                 indexAxis: 'y', responsive: true, maintainAspectRatio: false,

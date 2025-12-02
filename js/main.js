@@ -153,7 +153,7 @@ const updateUserProfileUI = (profile) => {
     }
 };
 
-// Reseta para padrão (usado no botão Novo Jogo)
+// Reseta para padrão
 const resetPlatformOptions = (selectedPlatform = null) => {
     const select = document.getElementById('inputPlatform');
     if(!select) return;
@@ -169,12 +169,9 @@ const resetPlatformOptions = (selectedPlatform = null) => {
     });
 };
 
-// NOVO: Busca plataformas ao editar um jogo existente
 const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
     const select = document.getElementById('inputPlatform');
     
-    // Mostra estado de carregamento no select sem apagar o valor atual visualmente se possível
-    // Mas para garantir consistência, vamos criar um option temporário
     const tempOpt = document.createElement('option');
     tempOpt.text = "Atualizando compatibilidade...";
     tempOpt.disabled = true;
@@ -182,14 +179,11 @@ const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
     
     try {
         const results = await GameService.searchRawg(gameTitle);
-        
-        // Pega o primeiro resultado (geralmente é o jogo certo)
         const match = results[0]; 
 
         if (match && match.platforms && match.platforms.length > 0) {
-            select.innerHTML = ''; // Limpa as opções padrão
+            select.innerHTML = '';
             
-            // Lógica de Placeholder se houver muitas opções
             if (match.platforms.length > 1) {
                 const placeholder = document.createElement('option');
                 placeholder.text = "Selecione a versão...";
@@ -200,7 +194,6 @@ const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
 
             let foundCurrent = false;
 
-            // Popula com dados da API
             match.platforms.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.platform.name;
@@ -213,7 +206,6 @@ const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
                 select.appendChild(opt);
             });
 
-            // Fallback: Se a plataforma salva (ex: "Outros") não estiver na API, adiciona ela manualmente
             if (!foundCurrent && currentPlatform) {
                 const opt = document.createElement('option');
                 opt.value = currentPlatform;
@@ -223,7 +215,6 @@ const loadPlatformsForExistingGame = async (gameTitle, currentPlatform) => {
             }
 
         } else {
-            // Se API falhar, remove o "Carregando" e mantem o que estava (resetPlatformOptions já rodou antes)
             tempOpt.remove();
         }
     } catch (e) {
@@ -272,11 +263,35 @@ const setupAuthEvents = () => {
     setupRawgSearch();
 
     const inputStatus = document.getElementById('inputStatus');
+    const priceLabel = document.querySelector('label[for="inputPrice"]');
+
     if (inputStatus) {
         inputStatus.onchange = (e) => {
+            const val = e.target.value;
             const soldGroup = document.getElementById('soldGroup');
-            if (e.target.value === 'Vendido') soldGroup.classList.remove('hidden');
-            else soldGroup.classList.add('hidden');
+            const soldLabel = soldGroup.querySelector('label');
+            
+            // Lógica de Exibição do Campo de Venda
+            // Mostra se for 'Vendido' OU 'À venda'
+            if (val === 'Vendido' || val === 'À venda') {
+                soldGroup.classList.remove('hidden');
+                soldLabel.innerText = val === 'À venda' ? 'Valor da Venda (R$)' : 'Valor Recebido (R$)';
+            } else {
+                soldGroup.classList.add('hidden');
+            }
+
+            // Lógica UX: Label Dinâmico do Custo
+            if (val === 'Desejado') {
+                if(priceLabel) {
+                    priceLabel.innerText = "Preço Estimado (R$)";
+                    priceLabel.style.color = "var(--warning)";
+                }
+            } else {
+                if(priceLabel) {
+                    priceLabel.innerText = "Preço Pago (R$)";
+                    priceLabel.style.color = "var(--secondary)";
+                }
+            }
         };
     }
 };
@@ -322,12 +337,10 @@ const openGameModal = (gameId = null) => {
         btnDelete.classList.remove('hidden');
         const game = appStore.get().games.find(g => g.id === gameId);
         
-        // 1. Preenche inicialmente com as opções padrão para exibir rápido
         resetPlatformOptions(game?.platform);
         
         if(game) {
             document.getElementById('inputGameName').value = game.title;
-            // Verifica se a plataforma salva está na lista padrão, se não, adiciona
             const select = document.getElementById('inputPlatform');
             if(game.platform && !DEFAULT_PLATFORMS.includes(game.platform)) {
                 const opt = document.createElement('option');
@@ -341,9 +354,15 @@ const openGameModal = (gameId = null) => {
             document.getElementById('inputPrice').value = game.price_paid;
             document.getElementById('inputSoldPrice').value = game.price_sold;
             document.getElementById('inputImage').value = game.image_url;
-            if(game.status === 'Vendido') document.getElementById('soldGroup').classList.remove('hidden');
+            
+            // CORREÇÃO AQUI: Mostra campo de venda para ambos os status
+            if(game.status === 'Vendido' || game.status === 'À venda') {
+                const soldGroup = document.getElementById('soldGroup');
+                soldGroup.classList.remove('hidden');
+                const soldLabel = soldGroup.querySelector('label');
+                soldLabel.innerText = game.status === 'À venda' ? 'Valor da Venda (R$)' : 'Valor Recebido (R$)';
+            }
 
-            // 2. Dispara busca na API para restringir as plataformas (Async)
             loadPlatformsForExistingGame(game.title, game.platform);
         }
     } else {
@@ -351,6 +370,10 @@ const openGameModal = (gameId = null) => {
         btnDelete.classList.add('hidden');
         resetPlatformOptions();
     }
+    
+    const inputStatus = document.getElementById('inputStatus');
+    if(inputStatus) inputStatus.dispatchEvent(new Event('change'));
+
     toggleModal(true);
 };
 
@@ -417,7 +440,6 @@ const setupRawgSearch = () => {
                 el.className = 'api-item';
                 el.innerHTML = `<img src="${g.background_image || ''}"><div class="api-info"><strong>${g.name}</strong></div>`;
                 
-                // SELEÇÃO INTELIGENTE (NOVO JOGO)
                 el.onclick = () => {
                     document.getElementById('inputGameName').value = g.name;
                     document.getElementById('inputImage').value = g.background_image;
