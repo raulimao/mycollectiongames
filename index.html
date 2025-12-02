@@ -22,13 +22,11 @@
             console.error("Erro Crítico de Inicialização:", e.error);
             const loader = document.getElementById('globalLoader');
             if(loader) {
-                // Se der erro, remove o loader para vermos o console ou o layout quebrado
                 loader.innerHTML = `<div style="color:red; text-align:center; padding:20px;">
                     <h3>ERRO DE SISTEMA</h3>
                     <p>${e.message}</p>
                     <small>Verifique o console (F12)</small>
                 </div>`;
-                // Não removemos o fundo preto para destacar o erro, mas paramos o spinner
                 const spinner = loader.querySelector('.spinner');
                 if(spinner) spinner.style.display = 'none';
             }
@@ -104,7 +102,7 @@
             <div class="tabs-group">
                 <button class="tab-btn active" data-tab="collection">Coleção</button>
                 <button class="tab-btn" data-tab="backlog">Backlog</button>
-                <button class="tab-btn" data-tab="sold">Vendidos</button>
+                <button class="tab-btn" data-tab="wishlist">Desejados</button> <button class="tab-btn" data-tab="sold">Vendidos</button>
             </div>
             <div class="filters-group">
                 <div class="search-box">
@@ -149,7 +147,7 @@
                         </select>
                     </div>
                     <div class="input-group flex-1">
-                        <label>Preço Pago (R$)</label>
+                        <label>Preço Pago / Estimado (R$)</label>
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
@@ -158,7 +156,7 @@
                     <div class="input-group flex-1">
                         <label>Status Atual</label>
                         <select id="inputStatus" required>
-                            <option value="Coleção">Na Estante</option>
+                            <option value="Desejado" style="color: var(--warning)">★ Quero Comprar</option> <option value="Coleção">Na Estante</option>
                             <option value="Backlog">Backlog</option>
                             <option value="Jogando">Jogando Agora</option>
                             <option value="Zerado">Zerado</option>

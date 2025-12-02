@@ -13,7 +13,7 @@ const getDOM = () => ({
 // Funções Expostas ao Window (Necessário para onclick no HTML)
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
-    // Encontra o botão certo baseado na ordem ou texto (simplificado pela ordem do HTML)
+    // Encontra o botão certo baseado na ordem ou texto
     const tabs = document.querySelectorAll('.chart-tab');
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
@@ -58,10 +58,14 @@ export const renderApp = (state) => {
     // Filtro Lógico
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
+    } else if (filter === 'wishlist') {
+        // NOVO: Filtro da Lista de Desejos
+        filteredGames = filteredGames.filter(g => g.status === 'Desejado');
     } else if (filter === 'backlog') {
         filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
     } else {
-        filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog'].includes(g.status));
+        // COLEÇÃO (Padrão): Exclui Vendidos, Backlog e agora também o Desejado
+        filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
     }
 
     // Filtro de Busca
@@ -79,7 +83,8 @@ export const renderApp = (state) => {
     }
 
     // 3. Renderização
-    renderKPIs(state.games, isShared);
+    // Passamos o filtro atual para renderKPIs saber se mostra custos ou estimativas
+    renderKPIs(state.games, isShared, filter); 
     renderGrid(filteredGames, isShared);
     renderChart(state.games, state.chartMode);
 };
@@ -118,10 +123,10 @@ const renderGrid = (games, isShared) => {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
                 const sign = profit >= 0 ? '+' : '';
                 const colorClass = profit >= 0 ? 'text-green' : 'text-danger';
-                // Formata sem o R$ para customizar
                 const val = formatMoney(profit).replace('R$', '').trim();
                 priceDisplay = `<span class="${colorClass}" style="font-weight:bold;">${sign} R$ ${val}</span>`;
             } else {
+                // Para Wishlist, price_paid funciona como "Preço Esperado"
                 priceDisplay = formatMoney(game.price_paid);
             }
         }
@@ -150,20 +155,25 @@ const getBadgeClass = (status) => {
         'Jogando': 'bg-playing',
         'Platinado': 'bg-plat',
         'Zerado': 'bg-plat',
-        'Backlog': 'bg-backlog'
+        'Backlog': 'bg-backlog',
+        'Desejado': 'bg-wishlist' // Badge Nova
     };
     return map[status] || 'bg-backlog';
 };
 
 // --- KPIs ---
-const renderKPIs = (allGames = [], isShared = false) => {
+const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection') => {
     const DOM = getDOM();
     if (!DOM.kpi) return;
     
-    const totalJogos = allGames.length;
+    // Separação Lógica: O que eu tenho vs O que eu quero
+    const jogosPossuidos = allGames.filter(g => g.status !== 'Desejado');
+    const jogosDesejados = allGames.filter(g => g.status === 'Desejado');
     
-    // Tratamento para estado inicial vazio
-    if (totalJogos === 0) {
+    const totalJogos = jogosPossuidos.length;
+    
+    // Tratamento para estado vazio geral
+    if (totalJogos === 0 && jogosDesejados.length === 0) {
         DOM.kpi.innerHTML = `
             <div class="kpi-card"><div><span class="kpi-label">Coleção</span><div class="kpi-value">0</div></div></div>
             <div class="kpi-card"><div><span class="kpi-label">Progresso</span><div class="kpi-value">0%</div></div></div>
@@ -172,23 +182,46 @@ const renderKPIs = (allGames = [], isShared = false) => {
         return;
     }
 
-    const finalizados = allGames.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
-    const backlog = allGames.filter(g => ['Backlog', 'Coleção'].includes(g.status)).length;
-    const taxaConclusao = Math.round((finalizados / totalJogos) * 100);
+    // Métricas Padrão (Baseadas na POSSE)
+    const finalizados = jogosPossuidos.filter(g => ['Zerado', 'Platinado', 'Vendido'].includes(g.status)).length;
+    const taxaConclusao = totalJogos > 0 ? Math.round((finalizados / totalJogos) * 100) : 0;
     
-    const totalInvestido = allGames.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-    const vendidos = allGames.filter(g => g.status === 'Vendido');
+    const totalInvestido = jogosPossuidos.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
+    const vendidos = jogosPossuidos.filter(g => g.status === 'Vendido');
     const totalRecuperado = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
 
     if (isShared) {
         DOM.kpi.innerHTML = generateVisitorKPI(totalJogos, taxaConclusao);
     } else {
-        const investimentoLiq = totalInvestido - totalRecuperado;
-        DOM.kpi.innerHTML = generateOwnerKPI(
-            formatMoney(investimentoLiq),
-            taxaConclusao,
-            formatMoney(totalRecuperado)
-        );
+        // Se a aba for Wishlist, mostra KPIs de planejamento financeiro
+        if (currentFilter === 'wishlist') {
+            const estimativaCusto = jogosDesejados.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
+            
+            DOM.kpi.innerHTML = `
+                <div class="kpi-card">
+                    <div><span class="kpi-label">Na Lista</span><div class="kpi-value" style="color:var(--warning)">${jogosDesejados.length}</div></div>
+                    <i class="fa-solid fa-star fa-2x" style="opacity:0.2; color:var(--warning)"></i>
+                </div>
+                 <div class="kpi-card">
+                    <div>
+                        <span class="kpi-label">Custo Estimado</span>
+                        <div class="kpi-value">${formatMoney(estimativaCusto)}</div>
+                    </div>
+                    <i class="fa-solid fa-tag fa-2x" style="opacity:0.2;"></i>
+                </div>
+                 <div class="kpi-card" style="opacity: 0.5">
+                    <div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div>
+                </div>
+            `;
+        } else {
+            // KPI Padrão (Dono)
+            const investimentoLiq = totalInvestido - totalRecuperado;
+            DOM.kpi.innerHTML = generateOwnerKPI(
+                formatMoney(investimentoLiq),
+                taxaConclusao,
+                formatMoney(totalRecuperado)
+            );
+        }
     }
 };
 
@@ -238,7 +271,6 @@ const renderChart = (games, mode = 'platform') => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
 
-    // Destrói gráfico anterior se existir
     if (chartInstance) {
         chartInstance.destroy();
         chartInstance = null;
@@ -279,7 +311,7 @@ const renderChart = (games, mode = 'platform') => {
             options: { ...config, scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } } } }
         });
     } else if (mode === 'cost') {
-        if (appStore.get().isSharedMode) return; // Visitante não vê custo
+        if (appStore.get().isSharedMode) return;
         const sorted = [...games].sort((a,b) => b.price_paid - a.price_paid).slice(0, 5);
         chartInstance = new Chart(ctx, {
             type: 'bar',

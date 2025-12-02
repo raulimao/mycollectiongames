@@ -135,6 +135,7 @@
 .bg-playing { background: rgba(217, 70, 239, 0.2); color: var(--primary); border: 1px solid var(--primary); }
 .bg-plat { background: rgba(255, 215, 0, 0.2); color: var(--gold); border: 1px solid var(--gold); }
 .bg-backlog { background: rgba(255,255,255,0.1); color: #aaa; border: 1px solid rgba(255,255,255,0.2); }
+.bg-wishlist { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.1); }
 
 /* --- MODAL --- */
 .modal-overlay {
