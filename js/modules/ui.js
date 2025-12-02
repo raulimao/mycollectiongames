@@ -64,12 +64,10 @@ export const renderApp = (state) => {
     } else if (filter === 'wishlist') {
         filteredGames = filteredGames.filter(g => g.status === 'Desejado');
     } else if (filter === 'store') {
-        // NOVO FILTRO: LOJA
         filteredGames = filteredGames.filter(g => g.status === 'À venda');
     } else if (filter === 'backlog') {
         filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
     } else {
-        // COLEÇÃO: Exclui Vendidos, Backlog, Desejado e À venda (opcional, mas geralmente Coleção é posse permanente)
         filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
     }
 
@@ -116,8 +114,18 @@ const renderGrid = (games, isShared) => {
         const bgImage = game.image_url || 'https://via.placeholder.com/400x600?text=No+Cover';
         const wishIcon = game.status === 'Desejado' ? '<i class="fa-solid fa-star" style="color:var(--warning); margin-right:5px;"></i>' : '';
         
-        let priceDisplay = '';
+        // Renderizar Tags Mini
+        let tagsHtml = '';
+        if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
+            tagsHtml = '<div class="card-tags">';
+            game.tags.forEach(tag => {
+                const classMap = tag.toLowerCase(); 
+                tagsHtml += `<span class="mini-tag ${classMap}">${tag}</span>`;
+            });
+            tagsHtml += '</div>';
+        }
 
+        let priceDisplay = '';
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -126,7 +134,6 @@ const renderGrid = (games, isShared) => {
                 const val = formatMoney(profit).replace('R$', '').trim();
                 priceDisplay = `<span class="${colorClass}" style="font-weight:bold;">${sign} R$ ${val}</span>`;
             } else if (game.status === 'À venda') {
-                 // Dono vê por quanto está vendendo
                  priceDisplay = `<span style="color:var(--success)">${formatMoney(game.price_sold)}</span>`;
             } else {
                 priceDisplay = formatMoney(game.price_paid);
@@ -145,6 +152,7 @@ const renderGrid = (games, isShared) => {
             <div class="card-img-wrapper">
                 <div class="card-img" style="background-image: url('${bgImage}')"></div>
                 <div class="card-overlay"></div>
+                ${tagsHtml}
             </div>
             <div class="card-body">
                 <span class="card-platform">${game.platform || 'Outros'}</span>
@@ -198,6 +206,25 @@ const openGameDetails = async (game, isShared) => {
         priceEl.innerText = formatMoney(valor || 0);
     }
 
+    // Renderizar Tags no Detalhe
+    const statsContainer = modal.querySelector('.modal-content > div > div:nth-child(2)');
+    let tagsContainer = document.getElementById('detailTagsContainer');
+    if (!tagsContainer) {
+        tagsContainer = document.createElement('div');
+        tagsContainer.id = 'detailTagsContainer';
+        tagsContainer.style.marginTop = '15px';
+        statsContainer.appendChild(tagsContainer);
+    }
+    tagsContainer.innerHTML = ''; 
+
+    if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
+        tagsContainer.innerHTML = '<span style="display:block; font-size:0.75rem; color:#888; margin-bottom:5px">DETALHES</span><div class="detail-tags-list"></div>';
+        const list = tagsContainer.querySelector('.detail-tags-list');
+        game.tags.forEach(tag => {
+            list.innerHTML += `<span class="detail-tag">${tag}</span>`;
+        });
+    }
+
     const btnEdit = document.getElementById('btnEditFromDetail');
     if (isShared) {
         btnEdit.classList.add('hidden');
@@ -244,7 +271,7 @@ const getBadgeClass = (status) => {
         'Vendido': 'bg-sold',
         'Jogando': 'bg-playing',
         'Platinado': 'bg-plat',
-        'Zerado': 'bg-plat',
+        'Jogo Zerado': 'bg-plat',
         'Backlog': 'bg-backlog',
         'Desejado': 'bg-wishlist',
         'À venda': 'bg-sold'
@@ -261,7 +288,7 @@ const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection
     const jogosDesejados = allGames.filter(g => g.status === 'Desejado');
     const jogosAVenda = allGames.filter(g => g.status === 'À venda');
     
-    const finalizados = jogosNaBase.filter(g => ['Zerado', 'Platinado'].includes(g.status)).length;
+    const finalizados = jogosNaBase.filter(g => ['Jogo Zerado', 'Platinado'].includes(g.status)).length;
     const totalBaseCount = jogosNaBase.length;
     const taxaConclusao = totalBaseCount > 0 ? Math.round((finalizados / totalBaseCount) * 100) : 0;
     
@@ -280,7 +307,6 @@ const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection
                 <div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div></div>
             `;
         } else if (currentFilter === 'store') {
-            // KPIs EXCLUSIVOS DA LOJA
             const potencialReceita = jogosAVenda.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
             DOM.kpi.innerHTML = `
                 <div class="kpi-card"><div><span class="kpi-label">Itens à Venda</span><div class="kpi-value" style="color:var(--success)">${jogosAVenda.length}</div></div><i class="fa-solid fa-shop fa-2x" style="opacity:0.2; color:var(--success)"></i></div>
@@ -357,8 +383,8 @@ const renderChart = (games, mode = 'platform', context = 'collection') => {
 
     const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6'];
     let barColor = colors[1];
-    if (context === 'wishlist') barColor = '#f59e0b'; // Laranja
-    if (context === 'store') barColor = '#00ff9d'; // Verde
+    if (context === 'wishlist') barColor = '#f59e0b';
+    if (context === 'store') barColor = '#00ff9d';
 
     const config = {
         responsive: true,

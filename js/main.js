@@ -12,6 +12,14 @@ const DEFAULT_PLATFORMS = [
     "Xbox One", "Nintendo Switch", "Steam Deck", "Mobile", "Outros"
 ];
 
+// Helper Global para Tags
+window.toggleTag = (btn) => {
+    btn.classList.toggle('active');
+    const actives = document.querySelectorAll('.tag-toggle.active');
+    const values = Array.from(actives).map(b => b.dataset.val);
+    document.getElementById('inputTags').value = JSON.stringify(values);
+};
+
 // --- INICIALIZAÇÃO ---
 const init = async () => {
     console.log("🚀 [System] Inicializando GameVault...");
@@ -153,7 +161,6 @@ const updateUserProfileUI = (profile) => {
     }
 };
 
-// Reseta para padrão
 const resetPlatformOptions = (selectedPlatform = null) => {
     const select = document.getElementById('inputPlatform');
     if(!select) return;
@@ -271,8 +278,6 @@ const setupAuthEvents = () => {
             const soldGroup = document.getElementById('soldGroup');
             const soldLabel = soldGroup.querySelector('label');
             
-            // Lógica de Exibição do Campo de Venda
-            // Mostra se for 'Vendido' OU 'À venda'
             if (val === 'Vendido' || val === 'À venda') {
                 soldGroup.classList.remove('hidden');
                 soldLabel.innerText = val === 'À venda' ? 'Valor da Venda (R$)' : 'Valor Recebido (R$)';
@@ -280,7 +285,6 @@ const setupAuthEvents = () => {
                 soldGroup.classList.add('hidden');
             }
 
-            // Lógica UX: Label Dinâmico do Custo
             if (val === 'Desejado') {
                 if(priceLabel) {
                     priceLabel.innerText = "Preço Estimado (R$)";
@@ -330,6 +334,11 @@ const openGameModal = (gameId = null) => {
     form.reset();
     document.getElementById('apiResults').classList.add('hidden');
     document.getElementById('soldGroup').classList.add('hidden');
+    
+    // Reset Tags
+    document.querySelectorAll('.tag-toggle').forEach(b => b.classList.remove('active'));
+    document.getElementById('inputTags').value = '[]';
+    
     editingId = gameId;
 
     if (gameId) {
@@ -355,7 +364,15 @@ const openGameModal = (gameId = null) => {
             document.getElementById('inputSoldPrice').value = game.price_sold;
             document.getElementById('inputImage').value = game.image_url;
             
-            // CORREÇÃO AQUI: Mostra campo de venda para ambos os status
+            // Carregar Tags
+            if (game.tags && Array.isArray(game.tags)) {
+                game.tags.forEach(tag => {
+                    const btn = document.querySelector(`.tag-toggle[data-val="${tag}"]`);
+                    if(btn) btn.classList.add('active');
+                });
+                document.getElementById('inputTags').value = JSON.stringify(game.tags);
+            }
+
             if(game.status === 'Vendido' || game.status === 'À venda') {
                 const soldGroup = document.getElementById('soldGroup');
                 soldGroup.classList.remove('hidden');
@@ -383,13 +400,17 @@ const handleFormSubmit = async (e) => {
     const oldText = btn.innerText;
     btn.innerText = "SALVANDO..."; btn.disabled = true;
     try {
+        let tagsArray = [];
+        try { tagsArray = JSON.parse(document.getElementById('inputTags').value || '[]'); } catch(e) { tagsArray = [] }
+
         const data = {
             title: document.getElementById('inputGameName').value,
             platform: document.getElementById('inputPlatform').value || 'Outros',
             status: document.getElementById('inputStatus').value,
             price_paid: document.getElementById('inputPrice').value,
             price_sold: document.getElementById('inputSoldPrice').value,
-            image_url: document.getElementById('inputImage').value
+            image_url: document.getElementById('inputImage').value,
+            tags: tagsArray
         };
 
         if (editingId) await GameService.updateGame(editingId, data);
@@ -400,7 +421,7 @@ const handleFormSubmit = async (e) => {
         const { user } = appStore.get();
         if(user) loadData(user.id);
     } catch (error) { 
-        showToast("Erro ao salvar", "error");
+        showToast("Erro ao salvar: " + error.message, "error");
     } finally { 
         btn.innerText = oldText; btn.disabled = false; 
     }
