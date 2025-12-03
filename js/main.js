@@ -1,7 +1,7 @@
 import { supabase, AuthService } from './services/supabase.js';
 import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
-import { renderApp, showToast, toggleModal, setupRoulette } from './modules/ui.js';
+import { renderApp, showToast, toggleModal, setupRoulette, exportData } from './modules/ui.js';
 
 let editingId = null;
 let isInitializing = false;
@@ -238,6 +238,9 @@ const setupGlobalEvents = () => {
     safeClick('btnGoogle', () => AuthService.signInGoogle());
     safeClick('btnCloseModal', () => toggleModal(false));
     
+    // NOVO: Bind do botão de Exportação
+    safeClick('btnExport', () => exportData());
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));

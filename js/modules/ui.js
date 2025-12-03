@@ -8,16 +8,24 @@ const getDOM = () => ({
     toast: document.getElementById('toastContainer'),
     modal: document.getElementById('gameModal'),
     filterBadge: document.getElementById('chartFilterBadge'),
-    filterName: document.getElementById('filterName')
+    filterName: document.getElementById('filterName'),
+    xpContainer: document.getElementById('xpContainer'),
+    xpBar: document.getElementById('xpProgressBar'),
+    xpText: document.getElementById('xpText'),
+    levelBadge: document.getElementById('userLevelBadge')
 });
 
 // Funções Expostas ao Window
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
     const tabs = document.querySelectorAll('.chart-tab');
+    
+    // Mapeamento dos botões (seguro contra ordem do HTML)
+    // 0: Platform, 1: Status, 2: DNA, 3: Cost
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
-    if(mode === 'cost' && tabs[2]) tabs[2].classList.add('active');
+    if(mode === 'dna' && tabs[2]) tabs[2].classList.add('active');
+    if(mode === 'cost' && tabs[3]) tabs[3].classList.add('active');
     
     appStore.setState({ chartMode: mode });
 };
@@ -38,19 +46,24 @@ export const renderApp = (state) => {
 
     // 1. Controle de Visibilidade UI
     const controlsPanel = document.querySelector('.controls-panel');
-    const costTab = document.querySelectorAll('.chart-tab')[2];
+    const costTab = document.querySelectorAll('.chart-tab')[3]; 
     const headerActions = document.getElementById('headerActions');
     const btnAddGame = document.getElementById('btnOpenAddModal');
+    const btnExport = document.getElementById('btnExport');
 
     if(isShared) {
         if(controlsPanel) controlsPanel.classList.remove('hidden'); 
         if(btnAddGame) btnAddGame.classList.add('hidden'); 
+        if(btnExport) btnExport.classList.add('hidden'); // Visitante não exporta
         if(costTab) costTab.style.display = 'none'; 
         if(headerActions) headerActions.innerHTML = `<span class="badge bg-playing">Visitando: ${state.sharedProfileName}</span>`;
+        if(DOM.xpContainer) DOM.xpContainer.classList.add('hidden');
     } else {
         if(controlsPanel) controlsPanel.classList.remove('hidden');
         if(btnAddGame) btnAddGame.classList.remove('hidden');
+        if(btnExport) btnExport.classList.remove('hidden');
         if(costTab) costTab.style.display = 'inline-flex';
+        if(DOM.xpContainer) DOM.xpContainer.classList.remove('hidden');
     }
 
     // 2. Filtragem de Dados
@@ -58,7 +71,7 @@ export const renderApp = (state) => {
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
-    // Lógica de Filtros Atualizada
+    // Lógica de Filtros
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'wishlist') {
@@ -86,7 +99,56 @@ export const renderApp = (state) => {
     // 3. Renderização
     renderKPIs(state.games, isShared, filter);
     renderGrid(filteredGames, isShared);
-    renderChart(filteredGames, state.chartMode, filter); 
+    renderChart(filteredGames, state.chartMode, filter, state.games);
+    
+    // AQUI ESTÁ A LÓGICA INTELIGENTE DE XP
+    // Passamos 'state.games' (todos os jogos) para calcular o histórico completo
+    renderXP(state.games); 
+};
+
+// --- LÓGICA DE GAMIFICAÇÃO (XP & LEVEL) ---
+const renderXP = (allGames) => {
+    const DOM = getDOM();
+    if(!DOM.xpContainer || !DOM.xpBar) return;
+
+    // Tabela de XP baseada na dificuldade/conquista
+    const XP_TABLE = {
+        'Platinado': 1000,
+        'Jogo Zerado': 500,
+        'Jogando': 100,
+        'Coleção': 50,
+        'Backlog': 10,
+        'Vendido': 20,
+        'À venda': 20,
+        'Desejado': 0 // Desejado não dá XP, pois não possui
+    };
+
+    // 1. Recalcula XP total baseado no estado ATUAL (Anti-Cheat: se mudar status para menor, perde XP)
+    let totalXP = 0;
+    allGames.forEach(g => {
+        const points = XP_TABLE[g.status] || 0;
+        totalXP += points;
+    });
+
+    // 2. Cálculo de Nível (Linear: a cada 1000xp = 1 nível)
+    // Se quiser curva exponencial, altere aqui.
+    const XP_PER_LEVEL = 1000;
+    const currentLevel = Math.floor(totalXP / XP_PER_LEVEL) + 1;
+    const xpInCurrentLevel = totalXP % XP_PER_LEVEL;
+    
+    // Porcentagem da barra
+    const progressPercent = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
+
+    // 3. Atualiza UI
+    // Adiciona animação se o nível mudou (poderíamos guardar estado anterior, mas visualmente o width transition resolve)
+    DOM.levelBadge.innerText = `LVL ${currentLevel}`;
+    DOM.xpText.innerText = `${xpInCurrentLevel} / ${XP_PER_LEVEL} XP`;
+    DOM.xpBar.style.width = `${progressPercent}%`;
+    
+    // Muda a cor da barra baseado no nível (Visual Feedback)
+    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; // Ouro/Vermelho (Elite)
+    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; // Azul/Roxo (Pro)
+    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; // Verde/Azul (Iniciante)
 };
 
 // --- GRID ---
@@ -107,10 +169,8 @@ const renderGrid = (games, isShared) => {
     games.forEach(game => {
         const card = document.createElement('div');
         card.className = 'game-card';
-        
         card.onclick = () => openGameDetails(game, isShared);
 
-        // NOVO: Hover Dinâmico de Capa
         card.onmouseenter = () => {
             const bgLayer = document.getElementById('dynamic-bg-layer');
             if(bgLayer && game.image_url) {
@@ -118,7 +178,6 @@ const renderGrid = (games, isShared) => {
                 bgLayer.classList.add('active');
             }
         };
-        
         card.onmouseleave = () => {
             const bgLayer = document.getElementById('dynamic-bg-layer');
             if(bgLayer) bgLayer.classList.remove('active');
@@ -128,18 +187,18 @@ const renderGrid = (games, isShared) => {
         const bgImage = game.image_url || 'https://via.placeholder.com/400x600?text=No+Cover';
         const wishIcon = game.status === 'Desejado' ? '<i class="fa-solid fa-star" style="color:var(--warning); margin-right:5px;"></i>' : '';
         
-        // Renderizar Tags Mini
         let tagsHtml = '';
         if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
             tagsHtml = '<div class="card-tags">';
             game.tags.forEach(tag => {
-                const classMap = tag.toLowerCase(); 
-                tagsHtml += `<span class="mini-tag ${classMap}">${tag}</span>`;
+                tagsHtml += `<span class="mini-tag ${tag.toLowerCase()}">${tag}</span>`;
             });
             tagsHtml += '</div>';
         }
 
         let priceDisplay = '';
+        
+        // LÓGICA DE ROI (LUCRO/PREJUÍZO)
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -148,17 +207,14 @@ const renderGrid = (games, isShared) => {
                 const val = formatMoney(profit).replace('R$', '').trim();
                 priceDisplay = `<span class="${colorClass}" style="font-weight:bold;">${sign} R$ ${val}</span>`;
             } else if (game.status === 'À venda') {
-                 priceDisplay = `<span style="color:var(--success)">${formatMoney(game.price_sold)}</span>`;
+                 priceDisplay = `<span class="text-green">${formatMoney(game.price_sold)}</span>`;
             } else {
                 priceDisplay = formatMoney(game.price_paid);
             }
         } else {
-            // LÓGICA DO VISITANTE
             if (game.status === 'À venda') {
                 const valorVenda = game.price_sold || 0;
-                priceDisplay = `<span style="color:var(--success); font-weight:bold;">${formatMoney(valorVenda)}</span>`;
-            } else {
-                priceDisplay = ''; 
+                priceDisplay = `<span class="text-green" style="font-weight:bold;">${formatMoney(valorVenda)}</span>`;
             }
         }
 
@@ -181,7 +237,6 @@ const renderGrid = (games, isShared) => {
     });
 };
 
-// --- MODAL RICO (HUB) ---
 const openGameDetails = async (game, isShared) => {
     const modal = document.getElementById('gameDetailModal');
     if(!modal) return;
@@ -208,7 +263,6 @@ const openGameDetails = async (game, isShared) => {
         priceEl.style.color = "var(--success)";
     }
     
-    // Configura Valor Exibido
     if (isShared) {
         if (game.status === 'À venda') {
             priceEl.innerText = formatMoney(game.price_sold || 0);
@@ -220,7 +274,6 @@ const openGameDetails = async (game, isShared) => {
         priceEl.innerText = formatMoney(valor || 0);
     }
 
-    // Renderizar Tags no Detalhe
     const statsContainer = modal.querySelector('.modal-content > div > div:nth-child(2)');
     let tagsContainer = document.getElementById('detailTagsContainer');
     if (!tagsContainer) {
@@ -376,7 +429,7 @@ const generateOwnerKPI = (investLiq, taxa, recuperado) => `
 
 // --- CHART ---
 let chartInstance = null;
-const renderChart = (games, mode = 'platform', context = 'collection') => {
+const renderChart = (games, mode = 'platform', context = 'collection', allGames = []) => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
 
@@ -385,6 +438,7 @@ const renderChart = (games, mode = 'platform', context = 'collection') => {
         let contextName = 'SYSTEM';
         if (context === 'wishlist') contextName = 'WISHLIST';
         if (context === 'store') contextName = 'STORE';
+        if (mode === 'dna') contextName = 'IDENTITY';
         titleDeco.innerText = `ANALYTICS // ${contextName}`;
     }
 
@@ -431,6 +485,54 @@ const renderChart = (games, mode = 'platform', context = 'collection') => {
             },
             options: { ...config, scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } } } }
         });
+    } else if (mode === 'dna') {
+        const stats = {
+            'Acumulador': Math.min(allGames.length * 2, 100), // Max 50 jogos = 100%
+            'Completista': 0,
+            'Investidor': 0,
+            'Diversificado': 0,
+            'Focado': 0
+        };
+
+        const totalJogos = allGames.length || 1;
+        const zerados = allGames.filter(g => ['Platinado', 'Jogo Zerado'].includes(g.status)).length;
+        const backlog = allGames.filter(g => g.status === 'Backlog').length;
+        const totalValue = allGames.reduce((acc, g) => acc + (g.price_paid || 0), 0);
+        const platforms = new Set(allGames.map(g => g.platform)).size;
+
+        stats['Completista'] = Math.round((zerados / totalJogos) * 100);
+        stats['Focado'] = Math.round((1 - (backlog / totalJogos)) * 100); 
+        stats['Investidor'] = Math.min((totalValue / 2000) * 100, 100); 
+        stats['Diversificado'] = Math.min((platforms / 5) * 100, 100); 
+
+        chartInstance = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: Object.keys(stats),
+                datasets: [{
+                    label: 'Gamer DNA',
+                    data: Object.values(stats),
+                    backgroundColor: 'rgba(217, 70, 239, 0.2)',
+                    borderColor: '#d946ef',
+                    pointBackgroundColor: '#0ea5e9',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(255,255,255,0.1)' },
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        pointLabels: { color: '#fff', font: { family: 'Orbitron', size: 10 } },
+                        ticks: { display: false, backdropColor: 'transparent' },
+                        suggestedMin: 0, suggestedMax: 100
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
     } else if (mode === 'cost') {
         if (appStore.get().isSharedMode) return;
         
@@ -477,15 +579,12 @@ export const toggleModal = (show) => {
     else DOM.modal.classList.add('hidden');
 };
 
-// --- NOVO: LÓGICA DO BACKLOG KILLER ---
 export const setupRoulette = () => {
     const btn = document.getElementById('btnRoulette');
     if(!btn) return;
 
     btn.onclick = () => {
         const { games } = appStore.get();
-        // Filtra apenas Backlog e Jogando e Coleção (Jogos não finalizados)
-        // Ignora Vendidos, Desejados, Zerados e Platinados
         const candidates = games.filter(g => ['Backlog', 'Coleção', 'Jogando'].includes(g.status));
         
         if(candidates.length === 0) {
@@ -493,18 +592,15 @@ export const setupRoulette = () => {
             return;
         }
 
-        // Abre Modal
         const modal = document.getElementById('rouletteModal');
         const display = document.getElementById('rouletteDisplay');
         modal.classList.remove('hidden');
         
-        // Estado de "Embaralhando"
         display.innerHTML = `
             <div class="roulette-card" style="background-image: url('https://media.giphy.com/media/3o7bu3XilJ5BOiSGic/giphy.gif'); border-color:var(--secondary)"></div>
             <p class="modal-desc">Consultando os deuses do gaming...</p>
         `;
 
-        // Delay para suspense (2.5s)
         setTimeout(() => {
             const winner = candidates[Math.floor(Math.random() * candidates.length)];
             const bg = winner.image_url || 'https://via.placeholder.com/400x600';
@@ -515,10 +611,33 @@ export const setupRoulette = () => {
                 <span class="badge bg-backlog">${winner.platform}</span>
             `;
             
-            // Confetti Effect (Se a lib estiver carregada)
             if(window.confetti) {
-                window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                // Z-INDEX ALTO para explodir na frente do modal
+                window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, zIndex: 6000 });
             }
         }, 2500);
     };
+};
+
+export const exportData = () => {
+    const { games } = appStore.get();
+    
+    if(!games || games.length === 0) {
+        showToast("Nada para exportar!", "error");
+        return;
+    }
+
+    const dataStr = JSON.stringify(games, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gamevault_backup_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast("Backup baixado com sucesso!");
 };

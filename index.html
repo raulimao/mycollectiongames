@@ -37,7 +37,6 @@
 <body>
 
     <div id="dynamic-bg-layer"></div>
-
     <div id="particles-js"></div>
 
     <div id="globalLoader" class="login-overlay">
@@ -60,10 +59,23 @@
 
     <div id="appContainer" class="app-container hidden">
         <header class="glass-header">
-            <div class="logo">
-                <span class="icon">👾</span>
-                <h1>VAULT <small class="pro-badge">PRO</small></h1>
+            <div class="header-left">
+                <div class="logo">
+                    <span class="icon">👾</span>
+                    <h1>VAULT <small class="pro-badge">PRO</small></h1>
+                </div>
+                
+                <div id="xpContainer" class="xp-display hidden">
+                    <div class="xp-info">
+                        <span class="level-badge" id="userLevelBadge">LVL 1</span>
+                        <span class="xp-label" id="xpText">0 / 1000 XP</span>
+                    </div>
+                    <div class="xp-bar-bg">
+                        <div id="xpProgressBar" class="xp-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
+
             <div class="user-profile">
                 <div id="headerActions" style="display:flex; gap:10px; align-items:center;"></div>
                 
@@ -85,6 +97,9 @@
                         </button>
                         <button class="chart-tab" onclick="window.switchChart('status')">
                             <i class="fa-solid fa-chart-pie"></i> STATUS
+                        </button>
+                        <button class="chart-tab" onclick="window.switchChart('dna')">
+                            <i class="fa-solid fa-dna"></i> DNA
                         </button>
                         <button class="chart-tab" onclick="window.switchChart('cost')">
                             <i class="fa-solid fa-coins"></i> GASTOS
@@ -114,6 +129,10 @@
                     <i class="fa-solid fa-dice fa-lg"></i>
                 </button>
 
+                <button id="btnExport" class="btn-primary" style="background: #333; margin-right: 10px; min-width: 50px;" title="Backup de Dados (JSON)">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+
                 <div class="search-box">
                     <i class="fa-solid fa-search"></i>
                     <input type="text" id="searchInput" placeholder="Buscar na coleção...">
@@ -125,7 +144,7 @@
         </section>
 
         <main id="gamesContainer" class="games-grid">
-            </main>
+        </main>
     </div>
 
     <div id="gameModal" class="modal-overlay hidden">
@@ -206,7 +225,6 @@
 
     <div id="gameDetailModal" class="modal-overlay hidden" style="z-index: 3500;">
         <div class="modal-content glass-panel" style="max-width: 800px; padding: 0; overflow: hidden;">
-            
             <div id="detailHero" style="height: 200px; background-size: cover; background-position: center; position: relative;">
                 <div style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);"></div>
                 <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn" style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
@@ -220,38 +238,29 @@
             <div style="padding: 30px; display: flex; gap: 30px; flex-wrap: wrap;">
                 <div style="flex: 2; min-width: 300px;">
                     <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO</h4>
-                    <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">
-                        Carregando informações da rede...
-                    </p>
-                    
+                    <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">Carregando...</p>
                     <div style="margin-top: 25px; display: flex; gap: 10px;">
                         <a id="detailLink" href="#" target="_blank" class="btn-primary" style="text-decoration: none; font-size: 0.8rem;">
                             <i class="fa-solid fa-globe"></i> SITE OFICIAL
                         </a>
-                        <button id="btnEditFromDetail" class="btn-small hidden">
-                            <i class="fa-solid fa-pen"></i> EDITAR DADOS
-                        </button>
+                        <button id="btnEditFromDetail" class="btn-small hidden"><i class="fa-solid fa-pen"></i> EDITAR DADOS</button>
                     </div>
                 </div>
 
                 <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
                     <h4 style="color: var(--primary); margin-bottom: 15px; font-family: var(--font-num);">NO COFRE</h4>
-                    
                     <div style="margin-bottom: 15px;">
                         <span style="display: block; font-size: 0.75rem; color: #888;">PLATAFORMA</span>
                         <strong id="detailPlatform" style="font-size: 1.1rem; color: white;">--</strong>
                     </div>
-                    
                     <div style="margin-bottom: 15px;">
                         <span style="display: block; font-size: 0.75rem; color: #888;">STATUS</span>
                         <span id="detailStatusBadge" class="badge">--</span>
                     </div>
-
                     <div>
                         <span id="detailPriceLabel" style="display: block; font-size: 0.75rem; color: #888;">VALOR</span>
                         <strong id="detailPrice" style="font-size: 1.2rem; color: var(--success);">--</strong>
                     </div>
-
                     <div id="detailTagsContainer" style="margin-top: 15px;"></div>
                 </div>
             </div>
@@ -261,34 +270,21 @@
     <div id="rouletteModal" class="modal-overlay hidden" style="z-index: 5000;">
         <div class="modal-content glass-panel center-content">
             <h2 class="modal-title-center" style="color:var(--secondary)">O ESCOLHIDO</h2>
-            <div id="rouletteDisplay" class="roulette-container">
-                </div>
-            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')" style="margin-top: 20px;">
-                ACEITAR DESTINO
-            </button>
+            <div id="rouletteDisplay" class="roulette-container"></div>
+            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')" style="margin-top: 20px;">ACEITAR DESTINO</button>
         </div>
     </div>
 
     <div id="nicknameModal" class="modal-overlay hidden" style="z-index: 10000;">
         <div class="modal-content glass-panel center-content" style="max-width: 400px;">
-            <div style="margin-bottom: 20px;">
-                <i class="fa-solid fa-fingerprint fa-3x brand-icon"></i>
-            </div>
-            
+            <div style="margin-bottom: 20px;"><i class="fa-solid fa-fingerprint fa-3x brand-icon"></i></div>
             <h2 class="modal-title-center">IDENTIDADE</h2>
-            <p class="modal-desc">
-                Crie seu <strong>Gamertag</strong> único para compartilhar sua coleção.
-            </p>
-            
+            <p class="modal-desc">Crie seu <strong>Gamertag</strong> único para compartilhar sua coleção.</p>
             <form id="nicknameForm">
                 <div class="input-group">
-                    <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required 
-                           class="input-center"
-                           pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
+                    <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required class="input-center" pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
                 </div>
-                <button type="submit" class="btn-primary full-width">
-                    CONFIRMAR ID
-                </button>
+                <button type="submit" class="btn-primary full-width">CONFIRMAR ID</button>
             </form>
         </div>
     </div>

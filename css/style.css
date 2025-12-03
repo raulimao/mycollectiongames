@@ -43,7 +43,6 @@ body {
     min-height: 100vh;
     overflow-x: hidden;
     position: relative;
-    /* Fallback visual se o particles.js falhar */
     background-image: radial-gradient(circle at 50% 50%, #1a1a20 0%, #0a0a0c 100%);
 }
 
@@ -56,7 +55,6 @@ body {
     pointer-events: none;
 }
 
-/* NOVO: Camada para Capas Dinâmicas */
 #dynamic-bg-layer {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 0; /* Entre particles e app */
@@ -81,8 +79,8 @@ body {
 .app-container.hidden {
     opacity: 0;
     pointer-events: none;
-    display: block !important; /* Mantém no DOM para layout, mas invisível */
-    height: 0; overflow: hidden; /* Colapsa */
+    display: block !important; 
+    height: 0; overflow: hidden;
 }
 
 /* --- HEADER --- */
@@ -98,18 +96,39 @@ body {
     border: 1px solid rgba(255,255,255,0.05);
     box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
     z-index: var(--z-header);
-    position: sticky; top: 20px; /* Sticky Header para melhor UX */
+    position: sticky; top: 20px;
 }
+
+.header-left { display: flex; align-items: center; gap: 30px; flex: 1; }
 
 .logo h1 { font-family: var(--font-num); font-size: 1.8rem; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary-glow); margin: 0; display: inline-block; vertical-align: middle; }
 .logo .icon { filter: drop-shadow(0 0 5px var(--primary)); margin-right: 10px; font-size: 1.5rem; vertical-align: middle; }
 .pro-badge { font-size: 0.4em; color: var(--primary); text-shadow: 0 0 10px var(--primary); vertical-align: super; margin-left: 5px; }
 
 .user-profile { display: flex; align-items: center; gap: 15px; }
-.user-name { font-weight: 600; letter-spacing: 0.5px; color: white; display: none; } /* Esconde em mobile por padrão */
+.user-name { font-weight: 600; letter-spacing: 0.5px; color: white; display: none; }
 @media(min-width: 768px) { .user-name { display: block; } }
-
 .avatar-img { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--secondary); box-shadow: 0 0 10px var(--secondary-glow); object-fit: cover; }
+
+/* XP BAR SYSTEM */
+.xp-display {
+    flex: 1; max-width: 300px; display: flex; flex-direction: column; gap: 5px;
+    animation: fadeIn 0.5s ease-out;
+}
+@media(max-width: 768px) { .xp-display { display: none; } }
+
+.xp-info { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-num); }
+.level-badge { color: var(--gold); font-weight: 800; font-size: 0.9rem; text-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+.xp-label { color: var(--text-muted); font-size: 0.7rem; letter-spacing: 1px; }
+
+.xp-bar-bg {
+    width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; position: relative;
+}
+.xp-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--gold), var(--primary));
+    width: 0%; transition: width 1s ease-in-out;
+    box-shadow: 0 0 10px var(--primary-glow);
+}
 
 /* --- UTILS --- */
 .hidden { display: none !important; }
@@ -117,6 +136,10 @@ body {
 .row-flex { display: flex; gap: 15px; width: 100%; }
 .flex-1 { flex: 1; }
 @media(max-width: 600px) { .row-flex { flex-direction: column; gap: 0; } }
+
+/* NOVO: Utilitários de Cor para ROI */
+.text-green { color: var(--success) !important; }
+.text-danger { color: var(--danger) !important; }
 
 /* --- GRID LAYOUTS --- */
 .dashboard-grid {
@@ -132,10 +155,10 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 25px;
     margin-top: 30px;
-    min-height: 200px; /* Evita colapso se vazio */
+    min-height: 200px; 
 }
 
-/* --- LOADER & OVERLAYS --- */
+/* --- LOADER --- */
 #globalLoader {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background-color: #000;
@@ -146,12 +169,13 @@ body {
 
 #globalLoader.hidden {
     opacity: 0;
-    visibility: hidden; /* Garante que o mouse passe através */
-    display: flex !important; /* Sobrescreve o display:none da classe .hidden para usar opacidade */
+    visibility: hidden;
+    display: flex !important;
 }
 
 .loader-text { margin-top: 15px; color: #fff; font-family: var(--font-num); letter-spacing: 2px; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 
 .progress-container {
     width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; margin-top: 10px; overflow: hidden; position: relative;
@@ -160,10 +184,8 @@ body {
     height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); width: 0%; transition: width 1s ease-in-out; box-shadow: 0 0 10px var(--primary-glow);
 }
 
-/* --- NOVO: ANIMAÇÕES BACKLOG KILLER / ROLETA --- */
-.roulette-container {
-    text-align: center; padding: 20px; width: 100%;
-}
+/* --- ANIMAÇÕES ROLETA --- */
+.roulette-container { text-align: center; padding: 20px; width: 100%; }
 .roulette-card {
     width: 200px; height: 280px; margin: 0 auto 20px;
     background-size: cover; background-position: center;
