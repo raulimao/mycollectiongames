@@ -16,6 +16,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <script>
         window.addEventListener('error', function(e) {
@@ -34,6 +35,8 @@
     </script>
 </head>
 <body>
+
+    <div id="dynamic-bg-layer"></div>
 
     <div id="particles-js"></div>
 
@@ -107,6 +110,10 @@
                 <button class="tab-btn" data-tab="sold">Vendidos</button>
             </div>
             <div class="filters-group">
+                <button id="btnRoulette" class="btn-primary btn-pulse" style="background: var(--secondary); margin-right: 10px; min-width: 50px;" title="Escolher jogo aleatório">
+                    <i class="fa-solid fa-dice fa-lg"></i>
+                </button>
+
                 <div class="search-box">
                     <i class="fa-solid fa-search"></i>
                     <input type="text" id="searchInput" placeholder="Buscar na coleção...">
@@ -248,6 +255,17 @@
                     <div id="detailTagsContainer" style="margin-top: 15px;"></div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="rouletteModal" class="modal-overlay hidden" style="z-index: 5000;">
+        <div class="modal-content glass-panel center-content">
+            <h2 class="modal-title-center" style="color:var(--secondary)">O ESCOLHIDO</h2>
+            <div id="rouletteDisplay" class="roulette-container">
+                </div>
+            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')" style="margin-top: 20px;">
+                ACEITAR DESTINO
+            </button>
         </div>
     </div>
 

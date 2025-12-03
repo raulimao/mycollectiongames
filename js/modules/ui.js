@@ -110,6 +110,20 @@ const renderGrid = (games, isShared) => {
         
         card.onclick = () => openGameDetails(game, isShared);
 
+        // NOVO: Hover Dinâmico de Capa
+        card.onmouseenter = () => {
+            const bgLayer = document.getElementById('dynamic-bg-layer');
+            if(bgLayer && game.image_url) {
+                bgLayer.style.backgroundImage = `url('${game.image_url}')`;
+                bgLayer.classList.add('active');
+            }
+        };
+        
+        card.onmouseleave = () => {
+            const bgLayer = document.getElementById('dynamic-bg-layer');
+            if(bgLayer) bgLayer.classList.remove('active');
+        };
+
         const badgeClass = getBadgeClass(game.status);
         const bgImage = game.image_url || 'https://via.placeholder.com/400x600?text=No+Cover';
         const wishIcon = game.status === 'Desejado' ? '<i class="fa-solid fa-star" style="color:var(--warning); margin-right:5px;"></i>' : '';
@@ -461,4 +475,50 @@ export const toggleModal = (show) => {
     const DOM = getDOM();
     if (show) DOM.modal.classList.remove('hidden');
     else DOM.modal.classList.add('hidden');
+};
+
+// --- NOVO: LÓGICA DO BACKLOG KILLER ---
+export const setupRoulette = () => {
+    const btn = document.getElementById('btnRoulette');
+    if(!btn) return;
+
+    btn.onclick = () => {
+        const { games } = appStore.get();
+        // Filtra apenas Backlog e Jogando e Coleção (Jogos não finalizados)
+        // Ignora Vendidos, Desejados, Zerados e Platinados
+        const candidates = games.filter(g => ['Backlog', 'Coleção', 'Jogando'].includes(g.status));
+        
+        if(candidates.length === 0) {
+            showToast("Nenhum jogo jogável no backlog!", "error");
+            return;
+        }
+
+        // Abre Modal
+        const modal = document.getElementById('rouletteModal');
+        const display = document.getElementById('rouletteDisplay');
+        modal.classList.remove('hidden');
+        
+        // Estado de "Embaralhando"
+        display.innerHTML = `
+            <div class="roulette-card" style="background-image: url('https://media.giphy.com/media/3o7bu3XilJ5BOiSGic/giphy.gif'); border-color:var(--secondary)"></div>
+            <p class="modal-desc">Consultando os deuses do gaming...</p>
+        `;
+
+        // Delay para suspense (2.5s)
+        setTimeout(() => {
+            const winner = candidates[Math.floor(Math.random() * candidates.length)];
+            const bg = winner.image_url || 'https://via.placeholder.com/400x600';
+            
+            display.innerHTML = `
+                <div class="roulette-card winner" style="background-image: url('${bg}')"></div>
+                <h3 style="color:white; font-size:1.5rem; margin-bottom:10px">${winner.title}</h3>
+                <span class="badge bg-backlog">${winner.platform}</span>
+            `;
+            
+            // Confetti Effect (Se a lib estiver carregada)
+            if(window.confetti) {
+                window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            }
+        }, 2500);
+    };
 };

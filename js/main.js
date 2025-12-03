@@ -1,7 +1,7 @@
 import { supabase, AuthService } from './services/supabase.js';
 import { GameService } from './services/api.js';
 import { appStore } from './modules/store.js';
-import { renderApp, showToast, toggleModal } from './modules/ui.js';
+import { renderApp, showToast, toggleModal, setupRoulette } from './modules/ui.js';
 
 let editingId = null;
 let isInitializing = false;
@@ -248,6 +248,9 @@ const setupGlobalEvents = () => {
 
     const searchInput = document.getElementById('searchInput');
     if(searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
+
+    // NOVO: Inicializa Roleta
+    setupRoulette();
 };
 
 const setupAuthEvents = () => {
