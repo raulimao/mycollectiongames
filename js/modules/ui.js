@@ -15,13 +15,13 @@ const getDOM = () => ({
     levelBadge: document.getElementById('userLevelBadge')
 });
 
-// Funções Expostas ao Window
+// --- FUNÇÕES EXPOSTAS AO WINDOW (Para onclicks no HTML) ---
+
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
     const tabs = document.querySelectorAll('.chart-tab');
     
-    // Mapeamento dos botões (seguro contra ordem do HTML)
-    // 0: Platform, 1: Status, 2: DNA, 3: Cost
+    // Mapeamento dos botões
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
     if(mode === 'dna' && tabs[2]) tabs[2].classList.add('active');
@@ -32,6 +32,37 @@ window.switchChart = (mode) => {
 
 window.clearChartFilter = () => {
     appStore.setState({ activePlatform: null });
+};
+
+// NOVO: Função para atualizar o vídeo dentro do Modal sem recarregar tudo
+window.updateVideoContext = (query, btn) => {
+    // 1. Atualiza visual dos botões
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.video-chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // 2. Atualiza Iframe com Loading State
+    const container = document.getElementById('videoPlayerContainer');
+    container.innerHTML = `<div style="height:0; padding-bottom:56.25%; background:#0a0a0c; display:flex; align-items:center; justify-content:center; color:#666; border-radius:12px;">Carregando...</div>`;
+    
+    // 3. Pequeno delay para UX e recarga do src
+    setTimeout(() => {
+        const encodedQuery = encodeURIComponent(query);
+        container.innerHTML = `
+            <div class="video-wrapper">
+                <iframe 
+                    src="https://www.youtube.com/embed?listType=search&list=${encodedQuery}&autoplay=1&rel=0&modestbranding=1" 
+                    frameborder="0" 
+                    allowfullscreen
+                    title="Gameplay Video"
+                ></iframe>
+            </div>
+        `;
+    }, 200);
+
+    // 4. Atualiza Link Externo de Segurança
+    const link = document.getElementById('extYtLink');
+    if(link) link.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 };
 
 // Utils
@@ -71,7 +102,6 @@ export const renderApp = (state) => {
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
-    // Lógica de Filtros
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'wishlist') {
@@ -100,18 +130,15 @@ export const renderApp = (state) => {
     renderKPIs(state.games, isShared, filter);
     renderGrid(filteredGames, isShared);
     renderChart(filteredGames, state.chartMode, filter, state.games);
-    
-    // AQUI ESTÁ A LÓGICA INTELIGENTE DE XP
-    // Passamos 'state.games' (todos os jogos) para calcular o histórico completo
     renderXP(state.games); 
 };
 
-// --- LÓGICA DE GAMIFICAÇÃO (XP & LEVEL) ---
+// --- GAMIFICAÇÃO: XP & LEVEL ---
 const renderXP = (allGames) => {
     const DOM = getDOM();
     if(!DOM.xpContainer || !DOM.xpBar) return;
 
-    // Tabela de XP baseada na dificuldade/conquista
+    // Tabela de XP
     const XP_TABLE = {
         'Platinado': 1000,
         'Jogo Zerado': 500,
@@ -120,38 +147,31 @@ const renderXP = (allGames) => {
         'Backlog': 10,
         'Vendido': 20,
         'À venda': 20,
-        'Desejado': 0 // Desejado não dá XP, pois não possui
+        'Desejado': 0
     };
 
-    // 1. Recalcula XP total baseado no estado ATUAL (Anti-Cheat: se mudar status para menor, perde XP)
     let totalXP = 0;
     allGames.forEach(g => {
         const points = XP_TABLE[g.status] || 0;
         totalXP += points;
     });
 
-    // 2. Cálculo de Nível (Linear: a cada 1000xp = 1 nível)
-    // Se quiser curva exponencial, altere aqui.
     const XP_PER_LEVEL = 1000;
     const currentLevel = Math.floor(totalXP / XP_PER_LEVEL) + 1;
     const xpInCurrentLevel = totalXP % XP_PER_LEVEL;
-    
-    // Porcentagem da barra
     const progressPercent = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
 
-    // 3. Atualiza UI
-    // Adiciona animação se o nível mudou (poderíamos guardar estado anterior, mas visualmente o width transition resolve)
     DOM.levelBadge.innerText = `LVL ${currentLevel}`;
     DOM.xpText.innerText = `${xpInCurrentLevel} / ${XP_PER_LEVEL} XP`;
     DOM.xpBar.style.width = `${progressPercent}%`;
     
-    // Muda a cor da barra baseado no nível (Visual Feedback)
-    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; // Ouro/Vermelho (Elite)
-    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; // Azul/Roxo (Pro)
-    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; // Verde/Azul (Iniciante)
+    // Cores dinâmicas da barra
+    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; 
+    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; 
+    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; 
 };
 
-// --- GRID ---
+// --- GRID DOS JOGOS ---
 const renderGrid = (games, isShared) => {
     const DOM = getDOM();
     if(!DOM.grid) return;
@@ -171,6 +191,7 @@ const renderGrid = (games, isShared) => {
         card.className = 'game-card';
         card.onclick = () => openGameDetails(game, isShared);
 
+        // Capas Dinâmicas
         card.onmouseenter = () => {
             const bgLayer = document.getElementById('dynamic-bg-layer');
             if(bgLayer && game.image_url) {
@@ -198,7 +219,7 @@ const renderGrid = (games, isShared) => {
 
         let priceDisplay = '';
         
-        // LÓGICA DE ROI (LUCRO/PREJUÍZO)
+        // Lógica de ROI (Lucro/Prejuízo)
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -237,6 +258,7 @@ const renderGrid = (games, isShared) => {
     });
 };
 
+// --- MODAL DETALHES (COM VÍDEO) ---
 const openGameDetails = async (game, isShared) => {
     const modal = document.getElementById('gameDetailModal');
     if(!modal) return;
@@ -252,6 +274,7 @@ const openGameDetails = async (game, isShared) => {
     const priceEl = document.getElementById('detailPrice');
     const priceLabel = document.getElementById('detailPriceLabel');
     
+    // Labels de Preço
     if (game.status === 'Desejado') {
         priceLabel.innerText = "CUSTO ESTIMADO";
         priceEl.style.color = "var(--warning)";
@@ -263,6 +286,7 @@ const openGameDetails = async (game, isShared) => {
         priceEl.style.color = "var(--success)";
     }
     
+    // Valores de Preço
     if (isShared) {
         if (game.status === 'À venda') {
             priceEl.innerText = formatMoney(game.price_sold || 0);
@@ -292,6 +316,50 @@ const openGameDetails = async (game, isShared) => {
         });
     }
 
+    // --- PAINEL DE VÍDEO (MEDIA CENTER) ---
+    const videoArea = document.getElementById('detailVideoArea');
+    if(videoArea) {
+        // Sanitização e Preparação
+        const cleanTitle = game.title.replace(/[^a-zA-Z0-9\s]/g, '');
+        const platform = game.platform === 'Outros' ? '' : game.platform;
+        
+        // Busca Inicial (Gameplay)
+        const initialQuery = `${cleanTitle} ${platform} Gameplay`;
+        const encodedInitial = encodeURIComponent(initialQuery);
+
+        videoArea.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin:0;">
+                    <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> MEDIA CENTER
+                </h4>
+            </div>
+
+            <div class="video-controls">
+                <button class="video-chip active" onclick="window.updateVideoContext('${cleanTitle} ${platform} Gameplay', this)">GAMEPLAY</button>
+                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} ${platform} Longplay', this)">LONGPLAY</button>
+                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} ${platform} Review', this)">REVIEW</button>
+                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} Trailer', this)">TRAILER</button>
+            </div>
+
+            <div id="videoPlayerContainer">
+                <div class="video-wrapper">
+                    <iframe 
+                        src="https://www.youtube.com/embed?listType=search&list=${encodedInitial}&autoplay=0&rel=0&modestbranding=1" 
+                        frameborder="0" 
+                        allowfullscreen
+                        title="Gameplay Video"
+                    ></iframe>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 12px; display:flex; justify-content:center; gap:10px">
+                <a id="extYtLink" href="https://www.youtube.com/results?search_query=${encodedInitial}" target="_blank" class="btn-small" style="text-decoration: none; border-color: rgba(255,255,255,0.2); color: #aaa;">
+                    <i class="fa-solid fa-external-link-alt"></i> Abrir busca no YouTube
+                </a>
+            </div>
+        `;
+    }
+
     const btnEdit = document.getElementById('btnEditFromDetail');
     if (isShared) {
         btnEdit.classList.add('hidden');
@@ -305,6 +373,7 @@ const openGameDetails = async (game, isShared) => {
 
     modal.classList.remove('hidden');
 
+    // Dados da RAWG API
     const descEl = document.getElementById('detailDesc');
     const mcEl = document.getElementById('detailMetacritic');
     const linkEl = document.getElementById('detailLink');
@@ -487,7 +556,7 @@ const renderChart = (games, mode = 'platform', context = 'collection', allGames 
         });
     } else if (mode === 'dna') {
         const stats = {
-            'Acumulador': Math.min(allGames.length * 2, 100), // Max 50 jogos = 100%
+            'Acumulador': Math.min(allGames.length * 2, 100), 
             'Completista': 0,
             'Investidor': 0,
             'Diversificado': 0,
@@ -612,7 +681,7 @@ export const setupRoulette = () => {
             `;
             
             if(window.confetti) {
-                // Z-INDEX ALTO para explodir na frente do modal
+                // FIXED: Z-Index 6000 para ficar acima do modal (5000)
                 window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, zIndex: 6000 });
             }
         }, 2500);

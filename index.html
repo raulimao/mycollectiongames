@@ -224,7 +224,7 @@
     </div>
 
     <div id="gameDetailModal" class="modal-overlay hidden" style="z-index: 3500;">
-        <div class="modal-content glass-panel" style="max-width: 800px; padding: 0; overflow: hidden;">
+        <div class="modal-content glass-panel" style="max-width: 800px; padding: 0; overflow: hidden; max-height: 90vh; overflow-y: auto;">
             <div id="detailHero" style="height: 200px; background-size: cover; background-position: center; position: relative;">
                 <div style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);"></div>
                 <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn" style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
@@ -239,15 +239,22 @@
                 <div style="flex: 2; min-width: 300px;">
                     <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO</h4>
                     <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">Carregando...</p>
+                    
                     <div style="margin-top: 25px; display: flex; gap: 10px;">
                         <a id="detailLink" href="#" target="_blank" class="btn-primary" style="text-decoration: none; font-size: 0.8rem;">
                             <i class="fa-solid fa-globe"></i> SITE OFICIAL
                         </a>
                         <button id="btnEditFromDetail" class="btn-small hidden"><i class="fa-solid fa-pen"></i> EDITAR DADOS</button>
                     </div>
+
+                    <div id="detailVideoArea" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                        <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin-bottom: 10px;">
+                            <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> GAMEPLAY & LONGPLAY
+                        </h4>
+                        </div>
                 </div>
 
-                <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); height: fit-content;">
                     <h4 style="color: var(--primary); margin-bottom: 15px; font-family: var(--font-num);">NO COFRE</h4>
                     <div style="margin-bottom: 15px;">
                         <span style="display: block; font-size: 0.75rem; color: #888;">PLATAFORMA</span>
