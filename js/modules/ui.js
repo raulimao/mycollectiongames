@@ -21,7 +21,7 @@ window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
     const tabs = document.querySelectorAll('.chart-tab');
     
-    // Mapeamento dos botões
+    // Mapeamento dos botões (seguro contra ordem do HTML)
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
     if(mode === 'dna' && tabs[2]) tabs[2].classList.add('active');
@@ -34,35 +34,43 @@ window.clearChartFilter = () => {
     appStore.setState({ activePlatform: null });
 };
 
-// NOVO: Função para atualizar o vídeo dentro do Modal sem recarregar tudo
-window.updateVideoContext = (query, btn) => {
+// ATUALIZAÇÃO DO CONTEXTO DE VÍDEO (Lógica corrigida Híbrida)
+window.updateVideoContext = (type, btn, videoUrl = null) => {
     // 1. Atualiza visual dos botões
     const parent = btn.parentElement;
     parent.querySelectorAll('.video-chip').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
-    // 2. Atualiza Iframe com Loading State
+    // 2. Container
     const container = document.getElementById('videoPlayerContainer');
-    container.innerHTML = `<div style="height:0; padding-bottom:56.25%; background:#0a0a0c; display:flex; align-items:center; justify-content:center; color:#666; border-radius:12px;">Carregando...</div>`;
     
-    // 3. Pequeno delay para UX e recarga do src
-    setTimeout(() => {
-        const encodedQuery = encodeURIComponent(query);
+    // Lógica Híbrida: Se tiver URL direta (Trailer MP4), toca. Se não (Gameplay/Review), mostra link externo.
+    if (type === 'TRAILER' && videoUrl && videoUrl !== 'null') {
         container.innerHTML = `
             <div class="video-wrapper">
-                <iframe 
-                    src="https://www.youtube.com/embed?listType=search&list=${encodedQuery}&autoplay=1&rel=0&modestbranding=1" 
-                    frameborder="0" 
-                    allowfullscreen
-                    title="Gameplay Video"
-                ></iframe>
+                <video controls autoplay name="media" style="width:100%; height:100%">
+                    <source src="${videoUrl}" type="video/mp4">
+                    Seu navegador não suporta a tag de vídeo.
+                </video>
+            </div>`;
+    } else {
+        // Para Gameplay/Longplay/Review (YouTube Externo)
+        // O embed de busca automática morreu, então fazemos um card bonito de redirecionamento
+        const gameName = document.getElementById('detailTitle').innerText;
+        // Limpa caracteres especiais do nome para a busca ficar limpa
+        const cleanName = gameName.replace(/[^a-zA-Z0-9\s]/g, ''); 
+        const query = encodeURIComponent(`${cleanName} ${type}`);
+        
+        container.innerHTML = `
+            <div class="video-placeholder" onclick="window.open('https://www.youtube.com/results?search_query=${query}', '_blank')">
+                <div class="placeholder-content">
+                    <i class="fa-brands fa-youtube fa-3x" style="color:red; margin-bottom:10px"></i>
+                    <h3>Assistir ${type} no YouTube</h3>
+                    <p style="color:#888; font-size:0.8rem">Devido a restrições de API, clique para abrir a lista.</p>
+                </div>
             </div>
         `;
-    }, 200);
-
-    // 4. Atualiza Link Externo de Segurança
-    const link = document.getElementById('extYtLink');
-    if(link) link.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    }
 };
 
 // Utils
@@ -102,6 +110,7 @@ export const renderApp = (state) => {
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
+    // Lógica de Filtros
     if (filter === 'sold') {
         filteredGames = filteredGames.filter(g => g.status === 'Vendido');
     } else if (filter === 'wishlist') {
@@ -130,15 +139,18 @@ export const renderApp = (state) => {
     renderKPIs(state.games, isShared, filter);
     renderGrid(filteredGames, isShared);
     renderChart(filteredGames, state.chartMode, filter, state.games);
+    
+    // AQUI ESTÁ A LÓGICA INTELIGENTE DE XP
+    // Passamos 'state.games' (todos os jogos) para calcular o histórico completo
     renderXP(state.games); 
 };
 
-// --- GAMIFICAÇÃO: XP & LEVEL ---
+// --- LÓGICA DE GAMIFICAÇÃO (XP & LEVEL) ---
 const renderXP = (allGames) => {
     const DOM = getDOM();
     if(!DOM.xpContainer || !DOM.xpBar) return;
 
-    // Tabela de XP
+    // Tabela de XP baseada na dificuldade/conquista
     const XP_TABLE = {
         'Platinado': 1000,
         'Jogo Zerado': 500,
@@ -150,28 +162,33 @@ const renderXP = (allGames) => {
         'Desejado': 0
     };
 
+    // 1. Recalcula XP total baseado no estado ATUAL (Anti-Cheat: se mudar status para menor, perde XP)
     let totalXP = 0;
     allGames.forEach(g => {
         const points = XP_TABLE[g.status] || 0;
         totalXP += points;
     });
 
+    // 2. Cálculo de Nível (Linear: a cada 1000xp = 1 nível)
     const XP_PER_LEVEL = 1000;
     const currentLevel = Math.floor(totalXP / XP_PER_LEVEL) + 1;
     const xpInCurrentLevel = totalXP % XP_PER_LEVEL;
+    
+    // Porcentagem da barra
     const progressPercent = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
 
+    // 3. Atualiza UI
     DOM.levelBadge.innerText = `LVL ${currentLevel}`;
     DOM.xpText.innerText = `${xpInCurrentLevel} / ${XP_PER_LEVEL} XP`;
     DOM.xpBar.style.width = `${progressPercent}%`;
     
-    // Cores dinâmicas da barra
-    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; 
-    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; 
-    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; 
+    // Muda a cor da barra baseado no nível (Visual Feedback)
+    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; // Ouro/Vermelho (Elite)
+    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; // Azul/Roxo (Pro)
+    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; // Verde/Azul (Iniciante)
 };
 
-// --- GRID DOS JOGOS ---
+// --- GRID ---
 const renderGrid = (games, isShared) => {
     const DOM = getDOM();
     if(!DOM.grid) return;
@@ -191,7 +208,6 @@ const renderGrid = (games, isShared) => {
         card.className = 'game-card';
         card.onclick = () => openGameDetails(game, isShared);
 
-        // Capas Dinâmicas
         card.onmouseenter = () => {
             const bgLayer = document.getElementById('dynamic-bg-layer');
             if(bgLayer && game.image_url) {
@@ -219,7 +235,7 @@ const renderGrid = (games, isShared) => {
 
         let priceDisplay = '';
         
-        // Lógica de ROI (Lucro/Prejuízo)
+        // LÓGICA DE ROI (LUCRO/PREJUÍZO)
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -258,7 +274,7 @@ const renderGrid = (games, isShared) => {
     });
 };
 
-// --- MODAL DETALHES (COM VÍDEO) ---
+// --- MODAL DETALHES REVISADO (COM VÍDEO HÍBRIDO E TRADUÇÃO) ---
 const openGameDetails = async (game, isShared) => {
     const modal = document.getElementById('gameDetailModal');
     if(!modal) return;
@@ -316,49 +332,9 @@ const openGameDetails = async (game, isShared) => {
         });
     }
 
-    // --- PAINEL DE VÍDEO (MEDIA CENTER) ---
+    // Preparar área de vídeo (Loading)
     const videoArea = document.getElementById('detailVideoArea');
-    if(videoArea) {
-        // Sanitização e Preparação
-        const cleanTitle = game.title.replace(/[^a-zA-Z0-9\s]/g, '');
-        const platform = game.platform === 'Outros' ? '' : game.platform;
-        
-        // Busca Inicial (Gameplay)
-        const initialQuery = `${cleanTitle} ${platform} Gameplay`;
-        const encodedInitial = encodeURIComponent(initialQuery);
-
-        videoArea.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin:0;">
-                    <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> MEDIA CENTER
-                </h4>
-            </div>
-
-            <div class="video-controls">
-                <button class="video-chip active" onclick="window.updateVideoContext('${cleanTitle} ${platform} Gameplay', this)">GAMEPLAY</button>
-                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} ${platform} Longplay', this)">LONGPLAY</button>
-                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} ${platform} Review', this)">REVIEW</button>
-                <button class="video-chip" onclick="window.updateVideoContext('${cleanTitle} Trailer', this)">TRAILER</button>
-            </div>
-
-            <div id="videoPlayerContainer">
-                <div class="video-wrapper">
-                    <iframe 
-                        src="https://www.youtube.com/embed?listType=search&list=${encodedInitial}&autoplay=0&rel=0&modestbranding=1" 
-                        frameborder="0" 
-                        allowfullscreen
-                        title="Gameplay Video"
-                    ></iframe>
-                </div>
-            </div>
-
-            <div style="text-align: center; margin-top: 12px; display:flex; justify-content:center; gap:10px">
-                <a id="extYtLink" href="https://www.youtube.com/results?search_query=${encodedInitial}" target="_blank" class="btn-small" style="text-decoration: none; border-color: rgba(255,255,255,0.2); color: #aaa;">
-                    <i class="fa-solid fa-external-link-alt"></i> Abrir busca no YouTube
-                </a>
-            </div>
-        `;
-    }
+    if(videoArea) videoArea.innerHTML = '<div style="padding:20px; text-align:center; color:#666">Carregando Media Center...</div>';
 
     const btnEdit = document.getElementById('btnEditFromDetail');
     if (isShared) {
@@ -373,18 +349,19 @@ const openGameDetails = async (game, isShared) => {
 
     modal.classList.remove('hidden');
 
-    // Dados da RAWG API
     const descEl = document.getElementById('detailDesc');
     const mcEl = document.getElementById('detailMetacritic');
     const linkEl = document.getElementById('detailLink');
     
     descEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Buscando dados na rede...';
 
+    // --- BUSCA DADOS NA API COM CACHE + TRADUÇÃO ---
     const details = await GameService.getGameDetails(game.title);
     
     if (details) {
-        const cleanDesc = details.description_raw || details.description || "Sem descrição disponível.";
-        descEl.innerText = cleanDesc.length > 400 ? cleanDesc.substring(0, 400) + "..." : cleanDesc;
+        // Usa a descrição TRADUZIDA se existir, senão usa a raw
+        const cleanDesc = details.description_ptbr || details.description_raw || "Sem descrição.";
+        descEl.innerText = cleanDesc;
         
         mcEl.innerText = details.metacritic ? `MC: ${details.metacritic}` : "MC: N/A";
         mcEl.style.display = 'inline-block';
@@ -395,8 +372,61 @@ const openGameDetails = async (game, isShared) => {
         } else {
             linkEl.classList.add('hidden');
         }
+
+        // --- RENDERIZAR MEDIA CENTER HÍBRIDO ---
+        if(videoArea) {
+            // Verifica se tem trailer oficial da Rawg
+            const hasTrailer = details.trailers && details.trailers.length > 0;
+            const trailerUrl = hasTrailer ? details.trailers[0].data['480']: null; // Pega qualidade 480p
+            const cleanTitle = game.title.replace(/[^a-zA-Z0-9\s]/g, '');
+
+            let initialContent = '';
+            
+            if (hasTrailer) {
+                // Se tem trailer, começa com ele tocando (Player Nativo HTML5)
+                initialContent = `
+                    <div class="video-wrapper">
+                        <video controls autoplay name="media" style="width:100%; height:100%">
+                            <source src="${trailerUrl}" type="video/mp4">
+                            Seu navegador não suporta a tag de vídeo.
+                        </video>
+                    </div>`;
+            } else {
+                // Se não tem, mostra card de Gameplay Externo (YouTube Link)
+                const query = encodeURIComponent(`${cleanTitle} Gameplay`);
+                initialContent = `
+                    <div class="video-placeholder" onclick="window.open('https://www.youtube.com/results?search_query=${query}', '_blank')">
+                        <div class="placeholder-content">
+                            <i class="fa-brands fa-youtube fa-3x" style="color:red; margin-bottom:10px"></i>
+                            <h3>Ver Gameplay no YouTube</h3>
+                            <p style="color:#888; font-size:0.8rem">Clique para abrir lista de vídeos</p>
+                        </div>
+                    </div>`;
+            }
+
+            videoArea.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin:0;">
+                        <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> MEDIA CENTER
+                    </h4>
+                </div>
+
+                <div class="video-controls">
+                    <button class="video-chip ${hasTrailer ? 'active' : ''}" onclick="window.updateVideoContext('TRAILER', this, '${trailerUrl}')">TRAILER</button>
+                    <button class="video-chip ${!hasTrailer ? 'active' : ''}" onclick="window.updateVideoContext('Gameplay', this)">GAMEPLAY</button>
+                    <button class="video-chip" onclick="window.updateVideoContext('Longplay', this)">LONGPLAY</button>
+                    <button class="video-chip" onclick="window.updateVideoContext('Review', this)">REVIEW</button>
+                </div>
+
+                <div id="videoPlayerContainer">
+                    ${initialContent}
+                </div>
+            `;
+        }
+
     } else {
-        descEl.innerText = "Detalhes adicionais não encontrados.";
+        descEl.innerText = "Detalhes não encontrados.";
+        if(videoArea) videoArea.innerHTML = '';
         mcEl.style.display = 'none';
         linkEl.classList.add('hidden');
     }
@@ -556,7 +586,7 @@ const renderChart = (games, mode = 'platform', context = 'collection', allGames 
         });
     } else if (mode === 'dna') {
         const stats = {
-            'Acumulador': Math.min(allGames.length * 2, 100), 
+            'Acumulador': Math.min(allGames.length * 2, 100), // Max 50 jogos = 100%
             'Completista': 0,
             'Investidor': 0,
             'Diversificado': 0,
