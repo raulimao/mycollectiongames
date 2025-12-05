@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -24,6 +26,9 @@
             console.error("Erro Crítico de Inicialização:", e.error);
             const loader = document.getElementById('globalLoader');
             if(loader) {
+                // Se o erro for do AuthClient, ignoramos o display visual pois o fix do supabase.js resolve
+                if (e.message && e.message.includes('AuthClient')) return;
+
                 loader.innerHTML = `<div style="color:red; text-align:center; padding:20px;">
                     <h3>ERRO DE SISTEMA</h3>
                     <p>${e.message}</p>
