@@ -17,6 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script>
         window.addEventListener('error', function(e) {
@@ -153,16 +154,13 @@
                 <h2 id="modalTitle">Adicionar Jogo</h2>
                 <button id="btnCloseModal" class="close-btn">&times;</button>
             </div>
-            
             <form id="gameForm">
                 <input type="hidden" id="editGameId">
-                
                 <div class="input-group">
                     <label>Nome do Jogo (Busca Automática)</label>
                     <input type="text" id="inputGameName" placeholder="Ex: Cyberpunk 2077..." autocomplete="off" required>
                     <div id="apiResults" class="api-results hidden"></div>
                 </div>
-
                 <div class="row-flex">
                     <div class="input-group flex-1">
                         <label>Plataforma</label>
@@ -179,7 +177,6 @@
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
-
                 <div class="row-flex">
                     <div class="input-group flex-1">
                         <label>Status Atual</label>
@@ -194,13 +191,11 @@
                             <option value="Vendido">Já Vendido</option>
                         </select>
                     </div>
-                    
                     <div class="input-group hidden flex-1" id="soldGroup">
                         <label>Valor Venda (R$)</label>
                         <input type="number" id="inputSoldPrice" step="0.01" placeholder="0.00">
                     </div>
                 </div>
-
                 <div class="input-group">
                     <label>Etiquetas / Detalhes</label>
                     <div id="tagsContainer" class="tags-selector">
@@ -212,9 +207,7 @@
                     </div>
                     <input type="hidden" id="inputTags">
                 </div>
-
                 <input type="hidden" id="inputImage">
-
                 <div class="modal-actions">
                     <button type="button" id="btnDeleteGame" class="btn-danger hidden">Excluir</button>
                     <button type="submit" class="btn-primary">Salvar Jogo</button>
@@ -228,32 +221,23 @@
             <div id="detailHero" style="height: 200px; background-size: cover; background-position: center; position: relative;">
                 <div style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);"></div>
                 <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn" style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
-                
                 <div style="position: absolute; bottom: 20px; left: 30px;">
                     <div id="detailMetacritic" class="badge bg-plat" style="margin-bottom: 10px; display: inline-block;">MC: --</div>
                     <h2 id="detailTitle" style="font-family: var(--font-num); font-size: 2rem; text-shadow: 0 0 10px rgba(0,0,0,0.8);">Titulo do Jogo</h2>
                 </div>
             </div>
-
             <div style="padding: 30px; display: flex; gap: 30px; flex-wrap: wrap;">
                 <div style="flex: 2; min-width: 300px;">
                     <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO</h4>
                     <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">Carregando...</p>
-                    
                     <div style="margin-top: 25px; display: flex; gap: 10px;">
                         <a id="detailLink" href="#" target="_blank" class="btn-primary" style="text-decoration: none; font-size: 0.8rem;">
                             <i class="fa-solid fa-globe"></i> SITE OFICIAL
                         </a>
                         <button id="btnEditFromDetail" class="btn-small hidden"><i class="fa-solid fa-pen"></i> EDITAR DADOS</button>
                     </div>
-
-                    <div id="detailVideoArea" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-                        <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin-bottom: 10px;">
-                            <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> GAMEPLAY & LONGPLAY
-                        </h4>
-                        </div>
+                    <div id="detailVideoArea" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
                 </div>
-
                 <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); height: fit-content;">
                     <h4 style="color: var(--primary); margin-bottom: 15px; font-family: var(--font-num);">NO COFRE</h4>
                     <div style="margin-bottom: 15px;">
@@ -297,6 +281,49 @@
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+
+    <div id="socialCardHidden" class="social-card-template">
+        <div class="sc-glow-1"></div>
+        <div class="sc-glow-2"></div>
+        
+        <div class="sc-content">
+            <div class="sc-header">
+                <div class="sc-brand">
+                    <h1><i class="fa-solid fa-gamepad" style="color:var(--primary); margin-right:15px"></i> GAME<span>VAULT</span></h1>
+                </div>
+                <div class="sc-profile">
+                    <div class="sc-info" style="text-align: right;">
+                        <h2 id="scName">PLAYER</h2>
+                        <span id="scLevel" class="sc-badge">LVL 1</span>
+                    </div>
+                    <img id="scAvatar" src="" class="sc-avatar" crossorigin="anonymous">
+                </div>
+            </div>
+            
+            <div class="sc-grid">
+                <div class="sc-card">
+                    <label>Coleção</label>
+                    <strong id="scTotalGames">0</strong>
+                </div>
+                <div class="sc-card">
+                    <label>Zerados</label>
+                    <strong id="scCompleted" style="color:var(--success)">0</strong>
+                </div>
+                <div class="sc-card">
+                    <label>Investido</label>
+                    <strong id="scValue" style="color:var(--gold); font-size: 2.2rem;">R$ 0</strong>
+                </div>
+                <div class="sc-card">
+                    <label>Favorita</label>
+                    <strong id="scTopPlatform" style="color:var(--secondary); font-size: 1.8rem; word-break: break-word; line-height: 1.1;">PC</strong>
+                </div>
+            </div>
+
+            <div class="sc-footer">
+                GERENCIADO NO GAMEVAULT • SUA COLEÇÃO, SEU LEGADO.
+            </div>
+        </div>
+    </div>
 
     <noscript>
         <div style="position:fixed; inset:0; bg:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">

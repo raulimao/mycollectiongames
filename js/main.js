@@ -238,7 +238,7 @@ const setupGlobalEvents = () => {
     safeClick('btnGoogle', () => AuthService.signInGoogle());
     safeClick('btnCloseModal', () => toggleModal(false));
     
-    // NOVO: Bind do botão de Exportação
+    // Bind do botão de Exportação
     safeClick('btnExport', () => exportData());
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -252,7 +252,6 @@ const setupGlobalEvents = () => {
     const searchInput = document.getElementById('searchInput');
     if(searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
 
-    // NOVO: Inicializa Roleta
     setupRoulette();
 };
 

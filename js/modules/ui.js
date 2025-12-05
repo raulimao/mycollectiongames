@@ -15,13 +15,12 @@ const getDOM = () => ({
     levelBadge: document.getElementById('userLevelBadge')
 });
 
-// --- FUNÇÕES EXPOSTAS AO WINDOW (Para onclicks no HTML) ---
+// --- FUNÇÕES EXPOSTAS AO WINDOW ---
 
 window.switchChart = (mode) => {
     document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
     const tabs = document.querySelectorAll('.chart-tab');
     
-    // Mapeamento dos botões (seguro contra ordem do HTML)
     if(mode === 'platform' && tabs[0]) tabs[0].classList.add('active');
     if(mode === 'status' && tabs[1]) tabs[1].classList.add('active');
     if(mode === 'dna' && tabs[2]) tabs[2].classList.add('active');
@@ -34,39 +33,46 @@ window.clearChartFilter = () => {
     appStore.setState({ activePlatform: null });
 };
 
-// ATUALIZAÇÃO DO CONTEXTO DE VÍDEO (Lógica corrigida Híbrida)
+// ATUALIZAÇÃO DO CONTEXTO DE VÍDEO (Lógica Híbrida: Trailer MP4 ou Link Externo)
+// ATUALIZAÇÃO DO CONTEXTO DE VÍDEO (Com Plataforma e Análise)
 window.updateVideoContext = (type, btn, videoUrl = null) => {
     // 1. Atualiza visual dos botões
     const parent = btn.parentElement;
     parent.querySelectorAll('.video-chip').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
-    // 2. Container
     const container = document.getElementById('videoPlayerContainer');
     
-    // Lógica Híbrida: Se tiver URL direta (Trailer MP4), toca. Se não (Gameplay/Review), mostra link externo.
-    if (type === 'TRAILER' && videoUrl && videoUrl !== 'null') {
+    // Lógica Trailer Nativo
+    if (type === 'TRAILER' && videoUrl && videoUrl !== 'null' && videoUrl !== 'undefined') {
         container.innerHTML = `
             <div class="video-wrapper">
-                <video controls autoplay name="media" style="width:100%; height:100%">
+                <video controls autoplay name="media" style="width:100%; height:100%; border-radius:12px;">
                     <source src="${videoUrl}" type="video/mp4">
                     Seu navegador não suporta a tag de vídeo.
                 </video>
             </div>`;
     } else {
-        // Para Gameplay/Longplay/Review (YouTube Externo)
-        // O embed de busca automática morreu, então fazemos um card bonito de redirecionamento
+        // FIX: Captura a Plataforma do DOM
         const gameName = document.getElementById('detailTitle').innerText;
-        // Limpa caracteres especiais do nome para a busca ficar limpa
+        const platformName = document.getElementById('detailPlatform').innerText;
+        
         const cleanName = gameName.replace(/[^a-zA-Z0-9\s]/g, ''); 
-        const query = encodeURIComponent(`${cleanName} ${type}`);
+        
+        // QUERY OTIMIZADA: "Yakuza 2 PlayStation 2 Análise"
+        const query = encodeURIComponent(`${cleanName} ${platformName} ${type}`);
         
         container.innerHTML = `
             <div class="video-placeholder" onclick="window.open('https://www.youtube.com/results?search_query=${query}', '_blank')">
                 <div class="placeholder-content">
-                    <i class="fa-brands fa-youtube fa-3x" style="color:red; margin-bottom:10px"></i>
-                    <h3>Assistir ${type} no YouTube</h3>
-                    <p style="color:#888; font-size:0.8rem">Devido a restrições de API, clique para abrir a lista.</p>
+                    <i class="fa-brands fa-youtube fa-4x" style="color: #ff0000; margin-bottom: 15px; filter: drop-shadow(0 0 20px rgba(255,0,0,0.4));"></i>
+                    <h3 style="color:white; font-family:var(--font-num); margin-bottom:5px">ASSISTIR ${type.toUpperCase()}</h3>
+                    <p style="color:#aaa; font-size:0.9rem; text-transform:uppercase;">
+                        ${cleanName} • ${platformName}
+                    </p>
+                    <span class="btn-small" style="margin-top:15px; display:inline-block; pointer-events:none; border-color:rgba(255,255,255,0.2);">
+                        ABRIR NO YOUTUBE <i class="fa-solid fa-external-link-alt"></i>
+                    </span>
                 </div>
             </div>
         `;
@@ -83,19 +89,42 @@ export const renderApp = (state) => {
     const DOM = getDOM();
     const isShared = state.isSharedMode;
 
-    // 1. Controle de Visibilidade UI
     const controlsPanel = document.querySelector('.controls-panel');
     const costTab = document.querySelectorAll('.chart-tab')[3]; 
     const headerActions = document.getElementById('headerActions');
     const btnAddGame = document.getElementById('btnOpenAddModal');
     const btnExport = document.getElementById('btnExport');
 
+    // Botões do Header
+    let headerButtons = '';
+    if(isShared) {
+        headerButtons = `<span class="badge bg-playing">Visitando: ${state.sharedProfileName}</span>`;
+    } else {
+        headerButtons = `
+            <button id="btnShareProfile" class="btn-small" title="Copiar Link"><i class="fa-solid fa-link"></i></button>
+            <button id="btnGenCard" class="btn-small" style="border-color:var(--primary); color:var(--primary)" title="Gerar Card Social"><i class="fa-solid fa-camera"></i> CARD</button>
+        `;
+    }
+
+    if(headerActions) {
+        headerActions.innerHTML = headerButtons;
+        if(!isShared) {
+            const btnLink = document.getElementById('btnShareProfile');
+            const btnCard = document.getElementById('btnGenCard');
+            if(btnLink) btnLink.onclick = () => {
+                const url = `${window.location.origin}${window.location.pathname}?u=${state.sharedProfileName}`;
+                navigator.clipboard.writeText(url).then(() => showToast("Link copiado!", "success"));
+            };
+            if(btnCard) btnCard.onclick = () => generateSocialCard();
+        }
+    }
+
+    // Visibilidade dos controles
     if(isShared) {
         if(controlsPanel) controlsPanel.classList.remove('hidden'); 
         if(btnAddGame) btnAddGame.classList.add('hidden'); 
-        if(btnExport) btnExport.classList.add('hidden'); // Visitante não exporta
+        if(btnExport) btnExport.classList.add('hidden'); 
         if(costTab) costTab.style.display = 'none'; 
-        if(headerActions) headerActions.innerHTML = `<span class="badge bg-playing">Visitando: ${state.sharedProfileName}</span>`;
         if(DOM.xpContainer) DOM.xpContainer.classList.add('hidden');
     } else {
         if(controlsPanel) controlsPanel.classList.remove('hidden');
@@ -105,23 +134,16 @@ export const renderApp = (state) => {
         if(DOM.xpContainer) DOM.xpContainer.classList.remove('hidden');
     }
 
-    // 2. Filtragem de Dados
+    // Filtragem
     let filteredGames = state.games || [];
     const term = state.searchTerm?.toLowerCase() || '';
     const filter = state.filter || 'collection';
 
-    // Lógica de Filtros
-    if (filter === 'sold') {
-        filteredGames = filteredGames.filter(g => g.status === 'Vendido');
-    } else if (filter === 'wishlist') {
-        filteredGames = filteredGames.filter(g => g.status === 'Desejado');
-    } else if (filter === 'store') {
-        filteredGames = filteredGames.filter(g => g.status === 'À venda');
-    } else if (filter === 'backlog') {
-        filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
-    } else {
-        filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
-    }
+    if (filter === 'sold') filteredGames = filteredGames.filter(g => g.status === 'Vendido');
+    else if (filter === 'wishlist') filteredGames = filteredGames.filter(g => g.status === 'Desejado');
+    else if (filter === 'store') filteredGames = filteredGames.filter(g => g.status === 'À venda');
+    else if (filter === 'backlog') filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
+    else filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
 
     if (term) filteredGames = filteredGames.filter(g => g.title.toLowerCase().includes(term));
 
@@ -135,71 +157,44 @@ export const renderApp = (state) => {
         if(DOM.filterBadge) DOM.filterBadge.classList.add('hidden');
     }
 
-    // 3. Renderização
+    // Renderização dos Componentes
     renderKPIs(state.games, isShared, filter);
     renderGrid(filteredGames, isShared);
     renderChart(filteredGames, state.chartMode, filter, state.games);
-    
-    // AQUI ESTÁ A LÓGICA INTELIGENTE DE XP
-    // Passamos 'state.games' (todos os jogos) para calcular o histórico completo
     renderXP(state.games); 
 };
 
-// --- LÓGICA DE GAMIFICAÇÃO (XP & LEVEL) ---
+// --- GAMIFICAÇÃO: XP & LEVEL ---
 const renderXP = (allGames) => {
     const DOM = getDOM();
     if(!DOM.xpContainer || !DOM.xpBar) return;
 
-    // Tabela de XP baseada na dificuldade/conquista
-    const XP_TABLE = {
-        'Platinado': 1000,
-        'Jogo Zerado': 500,
-        'Jogando': 100,
-        'Coleção': 50,
-        'Backlog': 10,
-        'Vendido': 20,
-        'À venda': 20,
-        'Desejado': 0
-    };
-
-    // 1. Recalcula XP total baseado no estado ATUAL (Anti-Cheat: se mudar status para menor, perde XP)
+    const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
     let totalXP = 0;
-    allGames.forEach(g => {
-        const points = XP_TABLE[g.status] || 0;
-        totalXP += points;
-    });
+    allGames.forEach(g => totalXP += (XP_TABLE[g.status] || 0));
 
-    // 2. Cálculo de Nível (Linear: a cada 1000xp = 1 nível)
     const XP_PER_LEVEL = 1000;
     const currentLevel = Math.floor(totalXP / XP_PER_LEVEL) + 1;
     const xpInCurrentLevel = totalXP % XP_PER_LEVEL;
-    
-    // Porcentagem da barra
     const progressPercent = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
 
-    // 3. Atualiza UI
     DOM.levelBadge.innerText = `LVL ${currentLevel}`;
     DOM.xpText.innerText = `${xpInCurrentLevel} / ${XP_PER_LEVEL} XP`;
     DOM.xpBar.style.width = `${progressPercent}%`;
     
-    // Muda a cor da barra baseado no nível (Visual Feedback)
-    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; // Ouro/Vermelho (Elite)
-    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; // Azul/Roxo (Pro)
-    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; // Verde/Azul (Iniciante)
+    if(currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)'; 
+    else if(currentLevel >= 5) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)'; 
+    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)'; 
 };
 
-// --- GRID ---
+// --- GRID DOS JOGOS ---
 const renderGrid = (games, isShared) => {
     const DOM = getDOM();
     if(!DOM.grid) return;
     DOM.grid.innerHTML = '';
     
     if (games.length === 0) {
-        DOM.grid.innerHTML = `
-            <div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted);">
-                <i class="fa-solid fa-ghost fa-3x" style="margin-bottom:20px; opacity:0.3;"></i>
-                <p>Nenhum jogo encontrado nesta seção.</p>
-            </div>`;
+        DOM.grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px; color:var(--text-muted);"><i class="fa-solid fa-ghost fa-3x" style="margin-bottom:20px; opacity:0.3;"></i><p>Nenhum jogo encontrado nesta seção.</p></div>`;
         return;
     }
 
@@ -208,6 +203,7 @@ const renderGrid = (games, isShared) => {
         card.className = 'game-card';
         card.onclick = () => openGameDetails(game, isShared);
 
+        // Capas Dinâmicas
         card.onmouseenter = () => {
             const bgLayer = document.getElementById('dynamic-bg-layer');
             if(bgLayer && game.image_url) {
@@ -227,15 +223,11 @@ const renderGrid = (games, isShared) => {
         let tagsHtml = '';
         if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
             tagsHtml = '<div class="card-tags">';
-            game.tags.forEach(tag => {
-                tagsHtml += `<span class="mini-tag ${tag.toLowerCase()}">${tag}</span>`;
-            });
+            game.tags.forEach(tag => tagsHtml += `<span class="mini-tag ${tag.toLowerCase()}">${tag}</span>`);
             tagsHtml += '</div>';
         }
 
         let priceDisplay = '';
-        
-        // LÓGICA DE ROI (LUCRO/PREJUÍZO)
         if (!isShared) {
             if (game.status === 'Vendido') {
                 const profit = (game.price_sold || 0) - (game.price_paid || 0);
@@ -249,10 +241,7 @@ const renderGrid = (games, isShared) => {
                 priceDisplay = formatMoney(game.price_paid);
             }
         } else {
-            if (game.status === 'À venda') {
-                const valorVenda = game.price_sold || 0;
-                priceDisplay = `<span class="text-green" style="font-weight:bold;">${formatMoney(valorVenda)}</span>`;
-            }
+            if (game.status === 'À venda') priceDisplay = `<span class="text-green" style="font-weight:bold;">${formatMoney(game.price_sold)}</span>`;
         }
 
         card.innerHTML = `
@@ -268,13 +257,12 @@ const renderGrid = (games, isShared) => {
                     <div class="price-tag" style="${priceDisplay ? '' : 'display:none'}">${priceDisplay}</div>
                     <span class="badge ${badgeClass}">${game.status}</span>
                 </div>
-            </div>
-        `;
+            </div>`;
         DOM.grid.appendChild(card);
     });
 };
 
-// --- MODAL DETALHES REVISADO (COM VÍDEO HÍBRIDO E TRADUÇÃO) ---
+// --- MODAL DETALHES ---
 const openGameDetails = async (game, isShared) => {
     const modal = document.getElementById('gameDetailModal');
     if(!modal) return;
@@ -290,7 +278,6 @@ const openGameDetails = async (game, isShared) => {
     const priceEl = document.getElementById('detailPrice');
     const priceLabel = document.getElementById('detailPriceLabel');
     
-    // Labels de Preço
     if (game.status === 'Desejado') {
         priceLabel.innerText = "CUSTO ESTIMADO";
         priceEl.style.color = "var(--warning)";
@@ -302,13 +289,9 @@ const openGameDetails = async (game, isShared) => {
         priceEl.style.color = "var(--success)";
     }
     
-    // Valores de Preço
     if (isShared) {
-        if (game.status === 'À venda') {
-            priceEl.innerText = formatMoney(game.price_sold || 0);
-        } else {
-            priceEl.innerText = "---";
-        }
+        if (game.status === 'À venda') priceEl.innerText = formatMoney(game.price_sold || 0);
+        else priceEl.innerText = "---";
     } else {
         const valor = (game.status === 'À venda' || game.status === 'Vendido') ? game.price_sold : game.price_paid;
         priceEl.innerText = formatMoney(valor || 0);
@@ -327,12 +310,10 @@ const openGameDetails = async (game, isShared) => {
     if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
         tagsContainer.innerHTML = '<span style="display:block; font-size:0.75rem; color:#888; margin-bottom:5px">DETALHES</span><div class="detail-tags-list"></div>';
         const list = tagsContainer.querySelector('.detail-tags-list');
-        game.tags.forEach(tag => {
-            list.innerHTML += `<span class="detail-tag">${tag}</span>`;
-        });
+        game.tags.forEach(tag => list.innerHTML += `<span class="detail-tag">${tag}</span>`);
     }
 
-    // Preparar área de vídeo (Loading)
+    // Media Center Loading
     const videoArea = document.getElementById('detailVideoArea');
     if(videoArea) videoArea.innerHTML = '<div style="padding:20px; text-align:center; color:#666">Carregando Media Center...</div>';
 
@@ -352,14 +333,12 @@ const openGameDetails = async (game, isShared) => {
     const descEl = document.getElementById('detailDesc');
     const mcEl = document.getElementById('detailMetacritic');
     const linkEl = document.getElementById('detailLink');
-    
-    descEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Buscando dados na rede...';
+    descEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Buscando informações...';
 
-    // --- BUSCA DADOS NA API COM CACHE + TRADUÇÃO ---
+    // API Call (Cache + Tradução + Trailers)
     const details = await GameService.getGameDetails(game.title);
     
     if (details) {
-        // Usa a descrição TRADUZIDA se existir, senão usa a raw
         const cleanDesc = details.description_ptbr || details.description_raw || "Sem descrição.";
         descEl.innerText = cleanDesc;
         
@@ -373,39 +352,16 @@ const openGameDetails = async (game, isShared) => {
             linkEl.classList.add('hidden');
         }
 
-        // --- RENDERIZAR MEDIA CENTER HÍBRIDO ---
+        // Renderização do Media Center
         if(videoArea) {
-            // Verifica se tem trailer oficial da Rawg
             const hasTrailer = details.trailers && details.trailers.length > 0;
-            const trailerUrl = hasTrailer ? details.trailers[0].data['480']: null; // Pega qualidade 480p
-            const cleanTitle = game.title.replace(/[^a-zA-Z0-9\s]/g, '');
-
-            let initialContent = '';
+            const trailerUrl = hasTrailer ? details.trailers[0].data['480'] : null; 
             
-            if (hasTrailer) {
-                // Se tem trailer, começa com ele tocando (Player Nativo HTML5)
-                initialContent = `
-                    <div class="video-wrapper">
-                        <video controls autoplay name="media" style="width:100%; height:100%">
-                            <source src="${trailerUrl}" type="video/mp4">
-                            Seu navegador não suporta a tag de vídeo.
-                        </video>
-                    </div>`;
-            } else {
-                // Se não tem, mostra card de Gameplay Externo (YouTube Link)
-                const query = encodeURIComponent(`${cleanTitle} Gameplay`);
-                initialContent = `
-                    <div class="video-placeholder" onclick="window.open('https://www.youtube.com/results?search_query=${query}', '_blank')">
-                        <div class="placeholder-content">
-                            <i class="fa-brands fa-youtube fa-3x" style="color:red; margin-bottom:10px"></i>
-                            <h3>Ver Gameplay no YouTube</h3>
-                            <p style="color:#888; font-size:0.8rem">Clique para abrir lista de vídeos</p>
-                        </div>
-                    </div>`;
-            }
-
+            // Define o conteúdo inicial. Se tiver trailer, começa com ele. Se não, começa com Gameplay (Placeholder).
+            let initialType = hasTrailer ? 'TRAILER' : 'Gameplay';
+            
             videoArea.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                     <h4 style="color: white; font-family: var(--font-num); font-size: 0.9rem; margin:0;">
                         <i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 8px;"></i> MEDIA CENTER
                     </h4>
@@ -415,15 +371,18 @@ const openGameDetails = async (game, isShared) => {
                     <button class="video-chip ${hasTrailer ? 'active' : ''}" onclick="window.updateVideoContext('TRAILER', this, '${trailerUrl}')">TRAILER</button>
                     <button class="video-chip ${!hasTrailer ? 'active' : ''}" onclick="window.updateVideoContext('Gameplay', this)">GAMEPLAY</button>
                     <button class="video-chip" onclick="window.updateVideoContext('Longplay', this)">LONGPLAY</button>
-                    <button class="video-chip" onclick="window.updateVideoContext('Review', this)">REVIEW</button>
+                    <button class="video-chip" onclick="window.updateVideoContext('Análise', this)">ANÁLISE</button>
                 </div>
 
-                <div id="videoPlayerContainer">
-                    ${initialContent}
-                </div>
+                <div id="videoPlayerContainer"></div>
             `;
-        }
 
+            // Dispara a primeira renderização
+            setTimeout(() => {
+                const btn = document.querySelector(`.video-chip.active`);
+                if(btn) window.updateVideoContext(initialType, btn, trailerUrl);
+            }, 50);
+        }
     } else {
         descEl.innerText = "Detalhes não encontrados.";
         if(videoArea) videoArea.innerHTML = '';
@@ -433,23 +392,16 @@ const openGameDetails = async (game, isShared) => {
 };
 
 const getBadgeClass = (status) => {
-    const map = {
-        'Vendido': 'bg-sold',
-        'Jogando': 'bg-playing',
-        'Platinado': 'bg-plat',
-        'Jogo Zerado': 'bg-plat',
-        'Backlog': 'bg-backlog',
-        'Desejado': 'bg-wishlist',
-        'À venda': 'bg-sold'
-    };
+    const map = { 'Vendido': 'bg-sold', 'Jogando': 'bg-playing', 'Platinado': 'bg-plat', 'Jogo Zerado': 'bg-plat', 'Backlog': 'bg-backlog', 'Desejado': 'bg-wishlist', 'À venda': 'bg-sold' };
     return map[status] || 'bg-backlog';
 };
 
-// --- KPIs ---
+// --- KPI & CHART ---
 const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection') => {
     const DOM = getDOM();
     if (!DOM.kpi) return;
     
+    // Filtro Lógico para KPI
     const jogosNaBase = allGames.filter(g => g.status !== 'Desejado' && g.status !== 'Vendido');
     const jogosDesejados = allGames.filter(g => g.status === 'Desejado');
     const jogosAVenda = allGames.filter(g => g.status === 'À venda');
@@ -458,207 +410,111 @@ const renderKPIs = (allGames = [], isShared = false, currentFilter = 'collection
     const totalBaseCount = jogosNaBase.length;
     const taxaConclusao = totalBaseCount > 0 ? Math.round((finalizados / totalBaseCount) * 100) : 0;
     
+    // Correção: Investimento não deve somar jogos da Wishlist
     const totalInvestido = jogosNaBase.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-    const vendidos = allGames.filter(g => g.status === 'Vendido');
-    const totalRecuperado = vendidos.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
+    const totalRecuperado = allGames.filter(g => g.status === 'Vendido').reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
 
     if (isShared) {
         DOM.kpi.innerHTML = generateVisitorKPI(totalBaseCount, taxaConclusao);
     } else {
         if (currentFilter === 'wishlist') {
-            const estimativaCusto = jogosDesejados.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
-            DOM.kpi.innerHTML = `
-                <div class="kpi-card"><div><span class="kpi-label">Na Lista</span><div class="kpi-value" style="color:var(--warning)">${jogosDesejados.length}</div></div><i class="fa-solid fa-star fa-2x" style="opacity:0.2; color:var(--warning)"></i></div>
-                <div class="kpi-card"><div><span class="kpi-label">Custo Estimado</span><div class="kpi-value">${formatMoney(estimativaCusto)}</div></div><i class="fa-solid fa-tag fa-2x" style="opacity:0.2;"></i></div>
-                <div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div></div>
-            `;
+            const estimativa = jogosDesejados.reduce((acc, g) => acc + (Number(g.price_paid) || 0), 0);
+            DOM.kpi.innerHTML = `<div class="kpi-card"><div><span class="kpi-label">Na Lista</span><div class="kpi-value" style="color:var(--warning)">${jogosDesejados.length}</div></div><i class="fa-solid fa-star fa-2x" style="opacity:0.2; color:var(--warning)"></i></div><div class="kpi-card"><div><span class="kpi-label">Custo Estimado</span><div class="kpi-value">${formatMoney(estimativa)}</div></div><i class="fa-solid fa-tag fa-2x" style="opacity:0.2;"></i></div><div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Saldo Atual</span><div class="kpi-value">${formatMoney(totalInvestido - totalRecuperado)}</div></div></div>`;
         } else if (currentFilter === 'store') {
-            const potencialReceita = jogosAVenda.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
-            DOM.kpi.innerHTML = `
-                <div class="kpi-card"><div><span class="kpi-label">Itens à Venda</span><div class="kpi-value" style="color:var(--success)">${jogosAVenda.length}</div></div><i class="fa-solid fa-shop fa-2x" style="opacity:0.2; color:var(--success)"></i></div>
-                <div class="kpi-card"><div><span class="kpi-label">Receita Estimada</span><div class="kpi-value" style="color:var(--success)">${formatMoney(potencialReceita)}</div></div><i class="fa-solid fa-sack-dollar fa-2x" style="opacity:0.2;"></i></div>
-                <div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Ticket Médio</span><div class="kpi-value">${jogosAVenda.length ? formatMoney(potencialReceita / jogosAVenda.length) : 'R$ 0'}</div></div></div>
-            `;
+            const potencial = jogosAVenda.reduce((acc, g) => acc + (Number(g.price_sold) || 0), 0);
+            DOM.kpi.innerHTML = `<div class="kpi-card"><div><span class="kpi-label">Itens à Venda</span><div class="kpi-value" style="color:var(--success)">${jogosAVenda.length}</div></div><i class="fa-solid fa-shop fa-2x" style="opacity:0.2; color:var(--success)"></i></div><div class="kpi-card"><div><span class="kpi-label">Receita Estimada</span><div class="kpi-value" style="color:var(--success)">${formatMoney(potencial)}</div></div><i class="fa-solid fa-sack-dollar fa-2x" style="opacity:0.2;"></i></div><div class="kpi-card" style="opacity: 0.5"><div><span class="kpi-label">Ticket Médio</span><div class="kpi-value">${jogosAVenda.length ? formatMoney(potencial / jogosAVenda.length) : 'R$ 0'}</div></div></div>`;
         } else {
-            const investimentoLiq = totalInvestido - totalRecuperado;
-            DOM.kpi.innerHTML = generateOwnerKPI(formatMoney(investimentoLiq), taxaConclusao, formatMoney(totalRecuperado));
+            DOM.kpi.innerHTML = generateOwnerKPI(formatMoney(totalInvestido - totalRecuperado), taxaConclusao, formatMoney(totalRecuperado));
         }
     }
 };
 
 const generateVisitorKPI = (total, taxa) => `
-    <div class="kpi-card">
-        <div><span class="kpi-label">Jogos na Base</span><div class="kpi-value">${total}</div></div>
-        <i class="fa-solid fa-layer-group fa-2x" style="opacity:0.2;"></i>
-    </div>
-    <div class="kpi-card">
-        <div style="width:100%">
-            <span class="kpi-label">Conclusão da Base</span>
-            <div style="display:flex; justify-content:space-between; align-items:center">
-                <div class="kpi-value" style="color:var(--success)">${taxa}%</div>
-                <i class="fa-solid fa-trophy fa-2x" style="opacity:0.2;"></i>
-            </div>
-            <div class="progress-container"><div class="progress-bar" style="width: ${taxa}%; background:var(--success)"></div></div>
-        </div>
-    </div>
-`;
+    <div class="kpi-card"><div><span class="kpi-label">Jogos na Base</span><div class="kpi-value">${total}</div></div><i class="fa-solid fa-layer-group fa-2x" style="opacity:0.2;"></i></div>
+    <div class="kpi-card"><div style="width:100%"><span class="kpi-label">Conclusão da Base</span><div style="display:flex; justify-content:space-between; align-items:center"><div class="kpi-value" style="color:var(--success)">${taxa}%</div><i class="fa-solid fa-trophy fa-2x" style="opacity:0.2;"></i></div><div class="progress-container"><div class="progress-bar" style="width: ${taxa}%; background:var(--success)"></div></div></div></div>`;
 
 const generateOwnerKPI = (investLiq, taxa, recuperado) => `
-    <div class="kpi-card">
-        <div>
-            <span class="kpi-label">Investimento Líquido <span class="badge-pro">PRO</span></span>
-            <div class="kpi-value">${investLiq}</div>
-        </div>
-        <i class="fa-solid fa-wallet fa-2x" style="opacity:0.2; color:#FFD700"></i>
-    </div>
-    <div class="kpi-card">
-        <div style="width: 100%">
-            <span class="kpi-label">Taxa de Conclusão</span>
-            <div style="display:flex; justify-content:space-between; align-items:baseline">
-                <span class="kpi-value" style="color:var(--primary)">${taxa}%</span>
-            </div>
-            <div class="progress-container"><div class="progress-bar" style="width: ${taxa}%"></div></div>
-        </div>
-    </div>
-    <div class="kpi-card">
-        <div><span class="kpi-label">Retorno Vendas</span><div class="kpi-value" style="color:var(--success)">${recuperado}</div></div>
-        <i class="fa-solid fa-hand-holding-dollar fa-2x" style="opacity:0.2; color:var(--success)"></i>
-    </div>
-`;
+    <div class="kpi-card"><div><span class="kpi-label">Investimento Líquido <span class="badge-pro">PRO</span></span><div class="kpi-value">${investLiq}</div></div><i class="fa-solid fa-wallet fa-2x" style="opacity:0.2; color:#FFD700"></i></div>
+    <div class="kpi-card"><div style="width: 100%"><span class="kpi-label">Taxa de Conclusão</span><div style="display:flex; justify-content:space-between; align-items:baseline"><span class="kpi-value" style="color:var(--primary)">${taxa}%</span></div><div class="progress-container"><div class="progress-bar" style="width: ${taxa}%"></div></div></div></div>
+    <div class="kpi-card"><div><span class="kpi-label">Retorno Vendas</span><div class="kpi-value" style="color:var(--success)">${recuperado}</div></div><i class="fa-solid fa-hand-holding-dollar fa-2x" style="opacity:0.2; color:var(--success)"></i></div>`;
 
-// --- CHART ---
 let chartInstance = null;
 const renderChart = (games, mode = 'platform', context = 'collection', allGames = []) => {
     const ctx = document.getElementById('collectionChart');
     if (!ctx) return;
 
-    const titleDeco = document.querySelector('.chart-title-deco');
-    if(titleDeco) {
-        let contextName = 'SYSTEM';
-        if (context === 'wishlist') contextName = 'WISHLIST';
-        if (context === 'store') contextName = 'STORE';
-        if (mode === 'dna') contextName = 'IDENTITY';
-        titleDeco.innerText = `ANALYTICS // ${contextName}`;
-    }
-
-    if (chartInstance) {
-        chartInstance.destroy();
-        chartInstance = null;
-    }
-
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     if (!games || games.length === 0) return;
 
-    const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6'];
-    let barColor = colors[1];
-    if (context === 'wishlist') barColor = '#f59e0b';
-    if (context === 'store') barColor = '#00ff9d';
-
-    const config = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true, font: {family:'Inter'} } } }
+    const colors = ['#d946ef', '#0ea5e9', '#00ff9d', '#f59e0b', '#ff3366', '#ffd700', '#8b5cf6', '#ffffff'];
+    const config = { 
+        responsive: true, 
+        maintainAspectRatio: false, 
+        plugins: { 
+            legend: { position: 'right', labels: { color: '#e2e8f0', usePointStyle: true, font: {family:'Inter'} } },
+            tooltip: { backgroundColor: 'rgba(20,20,25,0.9)', titleColor: '#d946ef' }
+        } 
     };
 
     if (mode === 'platform') {
         const platforms = {};
-        games.forEach(g => { platforms[g.platform] = (platforms[g.platform] || 0) + 1; });
+        games.forEach(g => platforms[g.platform] = (platforms[g.platform] || 0) + 1);
         
         chartInstance = new Chart(ctx, {
             type: 'doughnut',
-            data: {
-                labels: Object.keys(platforms),
-                datasets: [{ data: Object.values(platforms), backgroundColor: colors, borderColor: '#0a0a0c', borderWidth: 2 }]
-            },
-            options: { ...config, cutout: '60%', onClick: (evt, el) => {
-                if(el.length > 0) appStore.setState({ activePlatform: Object.keys(platforms)[el[0].index] });
-            }}
+            data: { labels: Object.keys(platforms), datasets: [{ data: Object.values(platforms), backgroundColor: colors, borderColor: '#0a0a0c', borderWidth: 2 }] },
+            options: { 
+                ...config, 
+                cutout: '60%',
+                // FIX: Evento de Clique
+                onClick: (evt, elements) => {
+                    if(elements.length > 0) {
+                        const index = elements[0].index;
+                        const label = Object.keys(platforms)[index];
+                        appStore.setState({ activePlatform: label, chartMode: 'platform' });
+                    }
+                }
+            }
         });
     } else if (mode === 'status') {
         const statuses = {};
-        games.forEach(g => { statuses[g.status] = (statuses[g.status] || 0) + 1; });
+        games.forEach(g => statuses[g.status] = (statuses[g.status] || 0) + 1);
+        
         chartInstance = new Chart(ctx, {
             type: 'polarArea',
-            data: {
-                labels: Object.keys(statuses),
-                datasets: [{ data: Object.values(statuses), backgroundColor: colors.map(c => c + '99'), borderColor: '#111', borderWidth: 1 }]
-            },
-            options: { ...config, scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } } } }
+            data: { labels: Object.keys(statuses), datasets: [{ data: Object.values(statuses), backgroundColor: colors.map(c => c + '99'), borderColor: '#111', borderWidth: 1 }] },
+            options: { 
+                ...config, 
+                scales: { r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false } } },
+                // FIX: Evento de Clique
+                onClick: (evt, elements) => {
+                    if(elements.length > 0) {
+                        const index = elements[0].index;
+                        const label = Object.keys(statuses)[index];
+                        appStore.setState({ activePlatform: label, chartMode: 'status' });
+                    }
+                }
+            }
         });
     } else if (mode === 'dna') {
-        const stats = {
-            'Acumulador': Math.min(allGames.length * 2, 100), // Max 50 jogos = 100%
-            'Completista': 0,
-            'Investidor': 0,
-            'Diversificado': 0,
-            'Focado': 0
-        };
-
-        const totalJogos = allGames.length || 1;
-        const zerados = allGames.filter(g => ['Platinado', 'Jogo Zerado'].includes(g.status)).length;
-        const backlog = allGames.filter(g => g.status === 'Backlog').length;
-        const totalValue = allGames.reduce((acc, g) => acc + (g.price_paid || 0), 0);
-        const platforms = new Set(allGames.map(g => g.platform)).size;
-
-        stats['Completista'] = Math.round((zerados / totalJogos) * 100);
-        stats['Focado'] = Math.round((1 - (backlog / totalJogos)) * 100); 
-        stats['Investidor'] = Math.min((totalValue / 2000) * 100, 100); 
-        stats['Diversificado'] = Math.min((platforms / 5) * 100, 100); 
-
-        chartInstance = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: Object.keys(stats),
-                datasets: [{
-                    label: 'Gamer DNA',
-                    data: Object.values(stats),
-                    backgroundColor: 'rgba(217, 70, 239, 0.2)',
-                    borderColor: '#d946ef',
-                    pointBackgroundColor: '#0ea5e9',
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    r: {
-                        angleLines: { color: 'rgba(255,255,255,0.1)' },
-                        grid: { color: 'rgba(255,255,255,0.1)' },
-                        pointLabels: { color: '#fff', font: { family: 'Orbitron', size: 10 } },
-                        ticks: { display: false, backdropColor: 'transparent' },
-                        suggestedMin: 0, suggestedMax: 100
-                    }
-                },
-                plugins: { legend: { display: false } }
-            }
+        // ... (Manter código DNA anterior, radar não precisa de clique de filtro)
+        const stats = { 'Acumulador': Math.min(allGames.length * 2, 100), 'Completista': 0, 'Investidor': 0, 'Diversificado': 0, 'Focado': 0 };
+        const total = allGames.length || 1;
+        stats['Completista'] = Math.round((allGames.filter(g => ['Platinado', 'Jogo Zerado'].includes(g.status)).length / total) * 100);
+        stats['Focado'] = Math.round((1 - (allGames.filter(g => g.status === 'Backlog').length / total)) * 100);
+        stats['Investidor'] = Math.min((allGames.reduce((acc, g) => acc + (g.price_paid || 0), 0) / 2000) * 100, 100);
+        stats['Diversificado'] = Math.min((new Set(allGames.map(g => g.platform)).size / 5) * 100, 100);
+        
+        chartInstance = new Chart(ctx, { 
+            type: 'radar', 
+            data: { labels: Object.keys(stats), datasets: [{ label: 'Gamer DNA', data: Object.values(stats), backgroundColor: 'rgba(217, 70, 239, 0.2)', borderColor: '#d946ef', pointBackgroundColor: '#0ea5e9', borderWidth: 2 }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: 'rgba(255,255,255,0.1)' }, grid: { color: 'rgba(255,255,255,0.1)' }, pointLabels: { color: '#fff', font: { family: 'Orbitron', size: 10 } }, ticks: { display: false, backdropColor: 'transparent' }, suggestedMin: 0, suggestedMax: 100 } }, plugins: { legend: { display: false } } } 
         });
-
     } else if (mode === 'cost') {
+        // ... (Manter código Cost anterior)
         if (appStore.get().isSharedMode) return;
-        
-        const sorted = [...games].sort((a,b) => {
-            const priceA = context === 'store' ? a.price_sold : a.price_paid;
-            const priceB = context === 'store' ? b.price_sold : b.price_paid;
-            return priceB - priceA;
-        }).slice(0, 5);
-        
-        let label = 'Custo Real (R$)';
-        if (context === 'wishlist') label = 'Estimativa (R$)';
-        if (context === 'store') label = 'Valor Venda (R$)';
-
-        const dataPoints = sorted.map(g => context === 'store' ? g.price_sold : g.price_paid);
-
-        chartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: sorted.map(g => g.title.length > 15 ? g.title.substring(0,15)+'...' : g.title),
-                datasets: [{ label: label, data: dataPoints, backgroundColor: barColor, borderRadius: 4 }]
-            },
-            options: {
-                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#aaa' } }, y: { grid: { display: false }, ticks: { color: 'white' } } },
-                plugins: { legend: { display: false } }
-            }
-        });
+        const sorted = [...games].sort((a,b) => (context === 'store' ? b.price_sold - a.price_sold : b.price_paid - a.price_paid)).slice(0, 5);
+        chartInstance = new Chart(ctx, { type: 'bar', data: { labels: sorted.map(g => g.title.substring(0,12)+'...'), datasets: [{ label: 'R$', data: sorted.map(g => context === 'store' ? g.price_sold : g.price_paid), backgroundColor: colors[1], borderRadius: 4 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#aaa' } }, y: { grid: { display: false }, ticks: { color: 'white' } } }, plugins: { legend: { display: false } } } });
     }
 };
 
@@ -681,55 +537,28 @@ export const toggleModal = (show) => {
 export const setupRoulette = () => {
     const btn = document.getElementById('btnRoulette');
     if(!btn) return;
-
     btn.onclick = () => {
         const { games } = appStore.get();
         const candidates = games.filter(g => ['Backlog', 'Coleção', 'Jogando'].includes(g.status));
-        
-        if(candidates.length === 0) {
-            showToast("Nenhum jogo jogável no backlog!", "error");
-            return;
-        }
-
+        if(candidates.length === 0) { showToast("Nenhum jogo jogável no backlog!", "error"); return; }
         const modal = document.getElementById('rouletteModal');
         const display = document.getElementById('rouletteDisplay');
         modal.classList.remove('hidden');
-        
-        display.innerHTML = `
-            <div class="roulette-card" style="background-image: url('https://media.giphy.com/media/3o7bu3XilJ5BOiSGic/giphy.gif'); border-color:var(--secondary)"></div>
-            <p class="modal-desc">Consultando os deuses do gaming...</p>
-        `;
-
+        display.innerHTML = `<div class="roulette-card" style="background-image: url('https://media.giphy.com/media/3o7bu3XilJ5BOiSGic/giphy.gif'); border-color:var(--secondary)"></div><p class="modal-desc">Consultando os deuses do gaming...</p>`;
         setTimeout(() => {
             const winner = candidates[Math.floor(Math.random() * candidates.length)];
-            const bg = winner.image_url || 'https://via.placeholder.com/400x600';
-            
-            display.innerHTML = `
-                <div class="roulette-card winner" style="background-image: url('${bg}')"></div>
-                <h3 style="color:white; font-size:1.5rem; margin-bottom:10px">${winner.title}</h3>
-                <span class="badge bg-backlog">${winner.platform}</span>
-            `;
-            
-            if(window.confetti) {
-                // FIXED: Z-Index 6000 para ficar acima do modal (5000)
-                window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, zIndex: 6000 });
-            }
+            display.innerHTML = `<div class="roulette-card winner" style="background-image: url('${winner.image_url || ''}')"></div><h3 style="color:white; font-size:1.5rem; margin-bottom:10px">${winner.title}</h3><span class="badge bg-backlog">${winner.platform}</span>`;
+            if(window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, zIndex: 6000 });
         }, 2500);
     };
 };
 
 export const exportData = () => {
     const { games } = appStore.get();
-    
-    if(!games || games.length === 0) {
-        showToast("Nada para exportar!", "error");
-        return;
-    }
-
+    if(!games || games.length === 0) { showToast("Nada para exportar!", "error"); return; }
     const dataStr = JSON.stringify(games, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
     a.download = `gamevault_backup_${new Date().toISOString().slice(0,10)}.json`;
@@ -737,6 +566,85 @@ export const exportData = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
     showToast("Backup baixado com sucesso!");
+};
+
+// --- NOVO: GERADOR DE CARD SOCIAL (HTML2CANVAS) ---
+export const generateSocialCard = async () => {
+    const { user, games, sharedProfileName } = appStore.get();
+    const dom = getDOM();
+    
+    showToast("Gerando card Pro... aguarde.", "success");
+
+    // 1. Popular os dados no Template Oculto
+    const card = document.getElementById('socialCardHidden');
+    const avatar = document.getElementById('scAvatar');
+    const name = document.getElementById('scName');
+    const level = document.getElementById('scLevel');
+    
+    const statGames = document.getElementById('scTotalGames');
+    const statCompleted = document.getElementById('scCompleted');
+    const statValue = document.getElementById('scValue');
+    const statPlatform = document.getElementById('scTopPlatform');
+
+    // Dados Básicos
+    name.innerText = sharedProfileName ? sharedProfileName.toUpperCase() : "GAMER";
+    level.innerText = dom.levelBadge.innerText; 
+    
+    if(user && user.user_metadata && user.user_metadata.avatar_url) {
+        avatar.src = user.user_metadata.avatar_url;
+    } else {
+        avatar.src = "https://ui-avatars.com/api/?name=" + (sharedProfileName || "Player") + "&background=0ea5e9&color=fff";
+    }
+
+    // --- LÓGICA CORRIGIDA (Sprint 4) ---
+    // Total de Jogos (Exclui Desejados do total da "Base")
+    const ownedGames = games.filter(g => g.status !== 'Desejado');
+    const totalGames = ownedGames.length;
+    
+    // Completados
+    const completed = games.filter(g => ['Platinado', 'Jogo Zerado'].includes(g.status)).length;
+    
+    // Investimento (CORREÇÃO: Filtra fora 'Desejado' antes de somar)
+    const totalInvest = ownedGames.reduce((acc, g) => acc + (g.price_paid || 0), 0);
+    
+    // Calcula Top Plataforma
+    const platforms = {};
+    ownedGames.forEach(g => { platforms[g.platform] = (platforms[g.platform] || 0) + 1; });
+    
+    let topPlat = "N/A";
+    if (Object.keys(platforms).length > 0) {
+        topPlat = Object.keys(platforms).reduce((a, b) => platforms[a] > platforms[b] ? a : b);
+    }
+
+    // Injeta Valores
+    statGames.innerText = totalGames;
+    statCompleted.innerText = completed;
+    statValue.innerText = formatMoney(totalInvest);
+    
+    statPlatform.innerText = topPlat;
+    if(topPlat.length > 10) statPlatform.style.fontSize = "1.4rem";
+    else statPlatform.style.fontSize = "1.8rem";
+
+    // 2. Gerar Canvas
+    try {
+        await new Promise(r => setTimeout(r, 100)); // Delay para imagens
+
+        const canvas = await html2canvas(card, {
+            backgroundColor: '#050505',
+            scale: 1.5,
+            useCORS: true,
+            logging: false
+        });
+
+        const link = document.createElement('a');
+        link.download = `GameVault_Card_${sharedProfileName || 'Gamer'}.png`;
+        link.href = canvas.toDataURL("image/png", 1.0);
+        link.click();
+        
+        showToast("Card gerado com sucesso!");
+    } catch (err) {
+        console.error(err);
+        showToast("Erro ao gerar imagem. Tente novamente.", "error");
+    }
 };

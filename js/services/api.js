@@ -2,27 +2,19 @@ import { supabase } from './supabase.js';
 
 const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6'; 
 
-// --- SERVIÇO DE CACHE ---
+// --- SERVIÇO DE CACHE (Versão v5 para forçar atualização) ---
 const CacheService = {
-    set(key, data, ttlMinutes = 1440) { // Padrão: 24 horas
+    set(key, data, ttlMinutes = 1440) { 
         const now = new Date();
-        const item = {
-            value: data,
-            expiry: now.getTime() + (ttlMinutes * 60 * 1000),
-        };
+        const item = { value: data, expiry: now.getTime() + (ttlMinutes * 60 * 1000) };
         localStorage.setItem(key, JSON.stringify(item));
     },
     get(key) {
         const itemStr = localStorage.getItem(key);
         if (!itemStr) return null;
-        
         try {
             const item = JSON.parse(itemStr);
-            const now = new Date();
-            if (now.getTime() > item.expiry) {
-                localStorage.removeItem(key);
-                return null;
-            }
+            if (new Date().getTime() > item.expiry) { localStorage.removeItem(key); return null; }
             return item.value;
         } catch(e) { return null; }
     }
@@ -39,36 +31,45 @@ const parseCurrency = (value) => {
 const withTimeout = (promise, ms = 5000, operationName = 'Operação') => {
     return Promise.race([
         promise,
-        new Promise((_, reject) => 
-            setTimeout(() => reject(new Error(`Timeout em: ${operationName}`)), ms)
-        )
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout em: ${operationName}`)), ms))
     ]);
 };
 
-// Tradução Gratuita (MyMemory API)
-// Nota: Limitada a 5000 caracteres/dia. Ideal para descrições curtas.
+// --- TRADUÇÃO V2 (GOOGLE GTX + MYMEMORY FALLBACK) ---
 const translateText = async (text) => {
-    if(!text) return "Sem descrição.";
+    if(!text) return "Sem descrição disponível.";
+    
+    // 1. Tentativa via Google Translate Free (Suporta textos maiores)
     try {
-        // Pega apenas os primeiros 500 caracteres para economizar e não quebrar a URL
-        const cleanText = text.substring(0, 500); 
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=en|pt-br`);
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text)}`;
+        const res = await fetch(url);
         const data = await res.json();
-        return data.responseData.translatedText + "...";
+        // O Google retorna array de arrays, precisamos juntar
+        if (data && data[0]) {
+            return data[0].map(x => x[0]).join("");
+        }
     } catch (e) {
-        console.warn("Falha na tradução:", e);
-        return text; // Fallback para inglês
+        console.warn("Google Translate falhou, tentando fallback...", e);
     }
+
+    // 2. Fallback: MyMemory (Limite 500 chars)
+    if (text.length < 500) {
+        try {
+            const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pt-br`);
+            const data = await res.json();
+            if (data.responseStatus === 200) return data.responseData.translatedText;
+        } catch (e) { console.warn("MyMemory falhou"); }
+    }
+
+    // 3. Último caso: Retorna original COMPLETO (Melhor que cortado)
+    return text;
 };
 
 export const GameService = {
     async getMyProfile(userId) {
         if (!userId) return null;
         try {
-            const { data, error } = await withTimeout(
-                supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-                4000, 'Buscar Perfil'
-            );
+            const { data, error } = await withTimeout(supabase.from('profiles').select('*').eq('id', userId).maybeSingle(), 4000, 'Buscar Perfil');
             if (error) throw error;
             return data;
         } catch (e) { return null; }
@@ -78,9 +79,7 @@ export const GameService = {
         const { data: { user } } = await supabase.auth.getUser();
         if(!user) throw new Error("Usuário não autenticado");
         const cleanNick = nickname.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        const { data, error } = await withTimeout(
-            supabase.from('profiles').insert([{ id: user.id, nickname: cleanNick }]).select().single()
-        );
+        const { data, error } = await withTimeout(supabase.from('profiles').insert([{ id: user.id, nickname: cleanNick }]).select().single());
         if (error) throw error;
         return data;
     },
@@ -101,10 +100,7 @@ export const GameService = {
         }
         if (!uid) return [];
         try {
-            const { data, error } = await withTimeout(
-                supabase.from('games').select('*').eq('user_id', uid).order('created_at', { ascending: false }),
-                10000, 'Fetch Games'
-            );
+            const { data, error } = await withTimeout(supabase.from('games').select('*').eq('user_id', uid).order('created_at', { ascending: false }), 10000, 'Fetch Games');
             if (error) throw error;
             return data || [];
         } catch (e) { return []; }
@@ -119,25 +115,14 @@ export const GameService = {
 
     async addGame(gameData) {
         const { data: { user } } = await supabase.auth.getUser();
-        const payload = { 
-            ...gameData, 
-            user_id: user.id, 
-            price_paid: parseCurrency(gameData.price_paid), 
-            price_sold: parseCurrency(gameData.price_sold) 
-        };
-        const { data, error } = await withTimeout(
-            supabase.from('games').insert([payload]).select()
-        );
+        const payload = { ...gameData, user_id: user.id, price_paid: parseCurrency(gameData.price_paid), price_sold: parseCurrency(gameData.price_sold) };
+        const { data, error } = await withTimeout(supabase.from('games').insert([payload]).select());
         if (error) throw error;
         return data[0];
     },
 
     async updateGame(id, gameData) {
-        const payload = { 
-            ...gameData, 
-            price_paid: parseCurrency(gameData.price_paid), 
-            price_sold: parseCurrency(gameData.price_sold) 
-        };
+        const payload = { ...gameData, price_paid: parseCurrency(gameData.price_paid), price_sold: parseCurrency(gameData.price_sold) };
         await supabase.from('games').update(payload).eq('id', id);
     },
 
@@ -147,7 +132,6 @@ export const GameService = {
 
     async searchRawg(query) {
         if (!query || query.length < 3) return [];
-        // Cache simples para busca também
         const cacheKey = `search_${query.toLowerCase()}`;
         const cached = CacheService.get(cacheKey);
         if(cached) return cached;
@@ -156,25 +140,20 @@ export const GameService = {
             const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`);
             if(!res.ok) throw new Error("RAWG Error");
             const data = await res.json();
-            CacheService.set(cacheKey, data.results, 60); // Cache busca por 1h
+            CacheService.set(cacheKey, data.results, 60); 
             return data.results || [];
         } catch (e) { return []; }
     },
 
-    // --- FUNÇÃO ATUALIZADA (CACHE + TRADUÇÃO + TRAILERS) ---
     async getGameDetails(gameName) {
         if (!gameName) return null;
         
-        // 1. Verifica Cache
-        const cacheKey = `details_${gameName.toLowerCase().replace(/\s/g, '')}`;
+        // MUDANÇA: 'v5' para invalidar descrições cortadas antigas
+        const cacheKey = `details_v5_${gameName.toLowerCase().replace(/\s/g, '')}`; 
         const cachedData = CacheService.get(cacheKey);
-        if (cachedData) {
-            console.log("⚡ [Cache] Detalhes recuperados!");
-            return cachedData;
-        }
+        if (cachedData) return cachedData;
 
         try {
-            // 2. Busca ID
             const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(gameName)}&page_size=1`);
             const data = await res.json();
             
@@ -182,7 +161,6 @@ export const GameService = {
             
             const gameBasic = data.results[0];
             
-            // 3. Busca Detalhes e Trailers em paralelo
             const [resDetails, resMovies] = await Promise.all([
                 fetch(`https://api.rawg.io/api/games/${gameBasic.id}?key=${RAWG_API_KEY}`),
                 fetch(`https://api.rawg.io/api/games/${gameBasic.id}/movies?key=${RAWG_API_KEY}`)
@@ -191,23 +169,19 @@ export const GameService = {
             const fullData = await resDetails.json();
             const moviesData = await resMovies.json();
 
-            // 4. Tradução
+            // Pega texto puro para melhor tradução
             const descRaw = fullData.description_raw || fullData.description || "";
             const translatedDesc = await translateText(descRaw);
 
-            // 5. Monta objeto final
             const finalData = {
                 ...fullData,
                 description_ptbr: translatedDesc,
-                trailers: moviesData.results || [] // Lista de trailers oficiais
+                trailers: moviesData.results || [] 
             };
 
-            // 6. Salva no Cache
-            CacheService.set(cacheKey, finalData, 1440); // 24 horas
-            
+            CacheService.set(cacheKey, finalData, 1440); 
             return finalData;
         } catch (e) {
-            console.warn("Falha ao buscar detalhes:", e);
             return null;
         }
     }

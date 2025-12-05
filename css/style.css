@@ -175,37 +175,49 @@ body {
 }
 
 .video-controls {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 15px;
-    overflow-x: auto;
-    padding-bottom: 5px; 
+    display: flex; gap: 8px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; 
 }
 
 .video-chip {
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.1);
     color: var(--text-muted);
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 700;
+    padding: 6px 12px; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 700; cursor: pointer;
+    font-family: var(--font-num); transition: all 0.3s ease; white-space: nowrap;
+}
+.video-chip:hover { background: rgba(255,255,255,0.1); color: white; }
+.video-chip.active { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+
+/* --- VIDEO PLACEHOLDER (FALLBACK) --- */
+.video-placeholder {
+    width: 100%;
+    /* Mantém proporção 16:9 */
+    aspect-ratio: 16 / 9; 
+    background: linear-gradient(135deg, #1a1a20 0%, #0a0a0c 100%);
+    position: relative;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
     cursor: pointer;
-    font-family: var(--font-num);
     transition: all 0.3s ease;
-    white-space: nowrap;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
 }
-
-.video-chip:hover {
-    background: rgba(255,255,255,0.1);
-    color: white;
-}
-
-.video-chip.active {
-    background: var(--primary);
-    color: white;
+.video-placeholder:hover {
     border-color: var(--primary);
-    box-shadow: 0 0 10px var(--primary-glow);
+    box-shadow: 0 0 30px rgba(217, 70, 239, 0.15);
+    transform: translateY(-2px);
+}
+.video-placeholder:hover i {
+    transform: scale(1.1); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.video-placeholder::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 20px 20px; opacity: 0.5; z-index: 1;
+}
+.placeholder-content {
+    text-align: center; padding: 20px; z-index: 2;
 }
 
 /* --- LOADER --- */
@@ -216,12 +228,7 @@ body {
     display: flex; justify-content: center; align-items: center; flex-direction: column;
     transition: opacity 0.5s ease, visibility 0.5s;
 }
-
-#globalLoader.hidden {
-    opacity: 0;
-    visibility: hidden;
-    display: flex !important;
-}
+#globalLoader.hidden { opacity: 0; visibility: hidden; display: flex !important; }
 
 .loader-text { margin-top: 15px; color: #fff; font-family: var(--font-num); letter-spacing: 2px; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -267,57 +274,106 @@ body {
 @keyframes pulse-glow { 0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(14, 165, 233, 0); } 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); } }
 
 /* --- SCROLLBAR CUSTOMIZADA (NEON DARK) --- */
+* { scrollbar-width: thin; scrollbar-color: var(--primary) rgba(255, 255, 255, 0.05); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--grad-primary); border-radius: 4px; box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3); }
+::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
+::-webkit-scrollbar-corner { background: transparent; }
 
-/* Firefox */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--primary) rgba(255, 255, 255, 0.05);
-}
-
-/* Chrome, Edge, Safari */
-::-webkit-scrollbar {
-    width: 8px; /* Largura da barra vertical */
-    height: 8px; /* Altura da barra horizontal */
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05); /* Fundo sutil */
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--grad-primary); /* Gradiente Neon */
-    border-radius: 4px;
-    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+/* --- SOCIAL SHARE CARD (PREMIUM EDITION) --- */
+.social-card-template {
+    position: fixed; left: -9999px; top: 0;
+    width: 1200px; height: 630px;
+    background: #050505;
+    font-family: var(--font-ui);
+    display: flex; flex-direction: column; overflow: hidden;
+    background-image: 
+        linear-gradient(rgba(217, 70, 239, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(217, 70, 239, 0.05) 1px, transparent 1px),
+        radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 80%);
+    background-size: 40px 40px, 40px 40px, 100% 100%;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--secondary); /* Brilho ao passar o mouse */
+.sc-glow-1 {
+    position: absolute; top: -100px; left: -100px; width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(217, 70, 239, 0.3) 0%, transparent 70%);
+    filter: blur(80px); z-index: 0;
+}
+.sc-glow-2 {
+    position: absolute; bottom: -100px; right: -100px; width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(14, 165, 233, 0.25) 0%, transparent 70%);
+    filter: blur(100px); z-index: 0;
 }
 
-::-webkit-scrollbar-corner {
-    background: transparent;
+.sc-content {
+    position: relative; z-index: 10;
+    height: 100%; padding: 50px 70px;
+    display: flex; flex-direction: column; justify-content: space-between;
 }
 
-/* --- VIDEO PLACEHOLDER (FALLBACK) --- */
-.video-placeholder {
-    width: 100%;
-    padding-bottom: 56.25%; /* 16:9 */
-    background: #111;
-    position: relative;
-    border-radius: 12px;
-    border: 1px dashed rgba(255,255,255,0.2);
-    cursor: pointer;
-    transition: all 0.3s;
+.sc-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 25px;
 }
-.video-placeholder:hover {
-    background: rgba(255,255,255,0.05);
-    border-color: var(--primary);
+
+.sc-brand h1 {
+    font-family: var(--font-num); font-size: 2.8rem; color: white;
+    text-shadow: 0 0 20px rgba(255,255,255,0.3);
+    margin: 0; display: flex; align-items: center; gap: 15px;
 }
-.placeholder-content {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    width: 100%;
+.sc-brand span { color: var(--primary); text-shadow: 0 0 25px var(--primary); }
+
+.sc-profile {
+    display: flex; align-items: center; gap: 25px;
+    background: rgba(255,255,255,0.03); padding: 10px 25px 10px 10px;
+    border-radius: 60px; border: 1px solid rgba(255,255,255,0.1);
+}
+.sc-avatar {
+    width: 80px; height: 80px; border-radius: 50%;
+    border: 3px solid var(--secondary); box-shadow: 0 0 20px var(--secondary-glow);
+}
+.sc-info h2 {
+    margin: 0; font-family: var(--font-num); color: white; font-size: 1.8rem;
+    text-transform: uppercase; letter-spacing: 2px;
+}
+.sc-badge {
+    background: var(--gold); color: black; font-weight: 800;
+    padding: 2px 10px; border-radius: 4px; font-size: 0.9rem;
+    display: inline-block; margin-top: 5px;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+}
+
+.sc-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; margin-top: 20px;
+}
+
+.sc-card {
+    background: rgba(20, 20, 35, 0.6); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;
+    padding: 30px 20px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3); position: relative; overflow: hidden;
+}
+.sc-card::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px;
+    background: var(--primary); box-shadow: 0 0 15px var(--primary);
+}
+.sc-card:nth-child(2)::before { background: var(--success); box-shadow: 0 0 15px var(--success); }
+.sc-card:nth-child(3)::before { background: var(--gold); box-shadow: 0 0 15px var(--gold); }
+.sc-card:nth-child(4)::before { background: var(--secondary); box-shadow: 0 0 15px var(--secondary); }
+
+.sc-card label {
+    font-size: 0.9rem; color: #888; text-transform: uppercase; 
+    letter-spacing: 2px; font-weight: 700; margin-bottom: 15px; font-family: var(--font-ui);
+}
+.sc-card strong {
+    font-family: var(--font-num); font-size: 3rem; color: white;
+    text-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}
+
+.sc-footer {
+    margin-top: auto; text-align: center;
+    color: rgba(255,255,255,0.4); font-size: 1rem;
+    letter-spacing: 1px; font-weight: 600;
 }
