@@ -8,37 +8,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-    <script>
-        window.addEventListener('error', function(e) {
-            console.error("Erro Crítico de Inicialização:", e.error);
-            const loader = document.getElementById('globalLoader');
-            if(loader) {
-                // Se o erro for do AuthClient, ignoramos o display visual pois o fix do supabase.js resolve
-                if (e.message && e.message.includes('AuthClient')) return;
-
-                loader.innerHTML = `<div style="color:red; text-align:center; padding:20px;">
-                    <h3>ERRO DE SISTEMA</h3>
-                    <p>${e.message}</p>
-                    <small>Verifique o console (F12)</small>
-                </div>`;
-                const spinner = loader.querySelector('.spinner');
-                if(spinner) spinner.style.display = 'none';
-            }
-        });
-    </script>
 </head>
 <body>
 
@@ -60,13 +39,16 @@
             <button id="btnGoogle" class="btn-social google">
                 <i class="fa-brands fa-google"></i> Entrar com Google
             </button>
+            <p style="margin-top:20px; color:#666; font-size:0.8rem">
+                Visitando? <a href="#" onclick="document.getElementById('loginOverlay').classList.add('hidden');" style="color:var(--primary)">Apenas navegar</a>
+            </p>
         </div>
     </div>
 
     <div id="appContainer" class="app-container hidden">
         <header class="glass-header">
             <div class="header-left">
-                <div class="logo">
+                <div class="logo" onclick="window.handleLogoClick()" style="cursor: pointer;" title="Ir para Home / Login">
                     <span class="icon">👾</span>
                     <h1>VAULT <small class="pro-badge">PRO</small></h1>
                 </div>
@@ -84,10 +66,8 @@
 
             <div class="user-profile">
                 <div id="headerActions" style="display:flex; gap:10px; align-items:center;"></div>
-                
                 <img id="userAvatar" class="avatar-img" src="" alt="User" style="display:none">
-                <span id="userName" class="user-name">...</span>
-                <button id="btnLogout" class="btn-small">SAIR</button>
+                <div id="authActions" style="display: flex; align-items: center; gap: 10px;"></div>
             </div>
         </header>
 
@@ -98,26 +78,17 @@
                 <div class="chart-header">
                     <span class="chart-title-deco">ANALYTICS // SYSTEM</span>
                     <div class="chart-controls">
-                        <button class="chart-tab active" onclick="window.switchChart('platform')">
-                            <i class="fa-solid fa-gamepad"></i> PLATFORM
-                        </button>
-                        <button class="chart-tab" onclick="window.switchChart('status')">
-                            <i class="fa-solid fa-chart-pie"></i> STATUS
-                        </button>
-                        <button class="chart-tab" onclick="window.switchChart('dna')">
-                            <i class="fa-solid fa-dna"></i> DNA
-                        </button>
-                        <button class="chart-tab" onclick="window.switchChart('cost')">
-                            <i class="fa-solid fa-coins"></i> GASTOS
-                        </button>
+                        <button class="chart-tab active" onclick="window.switchChart('platform')"><i class="fa-solid fa-gamepad"></i> PLATFORM</button>
+                        <button class="chart-tab" onclick="window.switchChart('status')"><i class="fa-solid fa-chart-pie"></i> STATUS</button>
+                        <button class="chart-tab" onclick="window.switchChart('dna')"><i class="fa-solid fa-dna"></i> DNA</button>
+                        <button class="chart-tab" onclick="window.switchChart('cost')"><i class="fa-solid fa-coins"></i> GASTOS</button>
                     </div>
                 </div>
                 <div class="canvas-wrapper">
                     <canvas id="collectionChart"></canvas>
                 </div>
                 <div id="chartFilterBadge" class="chart-filter-badge hidden" onclick="window.clearChartFilter()">
-                    <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> 
-                    <small>(Clique p/ limpar)</small>
+                    <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> <small>(Limpar)</small>
                 </div>
             </div>
         </section>
@@ -129,6 +100,7 @@
                 <button class="tab-btn" data-tab="wishlist">Desejados</button>
                 <button class="tab-btn" data-tab="store"><i class="fa-solid fa-shop"></i> Loja</button>
                 <button class="tab-btn" data-tab="sold">Vendidos</button>
+                <button class="tab-btn" data-tab="feed" style="color: var(--secondary)"><i class="fa-solid fa-satellite-dish"></i> Feed</button>
             </div>
             <div class="filters-group">
                 <button id="btnRoulette" class="btn-primary btn-pulse" style="background: var(--secondary); margin-right: 10px; min-width: 50px;" title="Escolher jogo aleatório">
@@ -149,8 +121,11 @@
             </div>
         </section>
 
-        <main id="gamesContainer" class="games-grid">
-        </main>
+        <main id="gamesContainer" class="games-grid"></main>
+
+        <div id="tabContentContainer" class="hidden">
+            <div id="feedContent" class="tab-pane hidden" style="padding: 20px;"></div>
+        </div>
     </div>
 
     <div id="gameModal" class="modal-overlay hidden">
@@ -285,76 +260,73 @@
         </div>
     </div>
 
+    <div id="networkModal" class="modal-overlay hidden" style="z-index: 6000;">
+        <div class="modal-content glass-panel" style="max-width: 400px; max-height: 80vh; display:flex; flex-direction:column;">
+            <div class="modal-header">
+                <h2 id="networkTitle">SEGUIDORES</h2>
+                <button onclick="document.getElementById('networkModal').classList.add('hidden')" class="close-btn">&times;</button>
+            </div>
+            <div id="networkList" style="overflow-y: auto; flex:1; padding-right:5px;"></div>
+        </div>
+    </div>
+
+    <div id="profileEditModal" class="modal-overlay hidden" style="z-index: 6500;">
+        <div class="modal-content glass-panel" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>EDITAR PERFIL</h2>
+                <button onclick="document.getElementById('profileEditModal').classList.add('hidden')" class="close-btn">&times;</button>
+            </div>
+            <form id="profileEditForm">
+                <div class="input-group">
+                    <label>Gamertag (Não alterável)</label>
+                    <input type="text" id="editNick" disabled style="opacity: 0.5; cursor: not-allowed;">
+                </div>
+                <div class="input-group">
+                    <label>URL da Foto de Perfil</label>
+                    <input type="url" id="editAvatar" placeholder="https://...">
+                    <small style="color:#666; display:block; margin-top:5px;">Cole o link direto de uma imagem (Imgur, Discord, etc).</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">SALVAR ALTERAÇÕES</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="toastContainer" class="toast-container"></div>
 
     <div id="socialCardHidden" class="social-card-template">
         <div class="sc-glow-1"></div>
         <div class="sc-glow-2"></div>
-        
         <div class="sc-content">
             <div class="sc-header">
-                <div class="sc-brand">
-                    <h1><i class="fa-solid fa-gamepad" style="color:var(--primary); margin-right:15px"></i> GAME<span>VAULT</span></h1>
-                </div>
+                <div class="sc-brand"><h1><i class="fa-solid fa-gamepad" style="color:var(--primary); margin-right:15px"></i> GAME<span>VAULT</span></h1></div>
                 <div class="sc-profile">
-                    <div class="sc-info" style="text-align: right;">
-                        <h2 id="scName">PLAYER</h2>
-                        <span id="scLevel" class="sc-badge">LVL 1</span>
-                    </div>
+                    <div class="sc-info" style="text-align: right;"><h2 id="scName">PLAYER</h2><span id="scLevel" class="sc-badge">LVL 1</span></div>
                     <img id="scAvatar" src="" class="sc-avatar" crossorigin="anonymous">
                 </div>
             </div>
-            
             <div class="sc-grid">
-                <div class="sc-card">
-                    <label>Coleção</label>
-                    <strong id="scTotalGames">0</strong>
-                </div>
-                <div class="sc-card">
-                    <label>Zerados</label>
-                    <strong id="scCompleted" style="color:var(--success)">0</strong>
-                </div>
-                <div class="sc-card">
-                    <label>Investido</label>
-                    <strong id="scValue" style="color:var(--gold); font-size: 2.2rem;">R$ 0</strong>
-                </div>
-                <div class="sc-card">
-                    <label>Favorita</label>
-                    <strong id="scTopPlatform" style="color:var(--secondary); font-size: 1.8rem; word-break: break-word; line-height: 1.1;">PC</strong>
-                </div>
+                <div class="sc-card"><label>Coleção</label><strong id="scTotalGames">0</strong></div>
+                <div class="sc-card"><label>Zerados</label><strong id="scCompleted" style="color:var(--success)">0</strong></div>
+                <div class="sc-card"><label>Investido</label><strong id="scValue" style="color:var(--gold); font-size: 2.2rem;">R$ 0</strong></div>
+                <div class="sc-card"><label>Favorita</label><strong id="scTopPlatform" style="color:var(--secondary); font-size: 1.8rem; word-break: break-word; line-height: 1.1;">PC</strong></div>
             </div>
-
-            <div class="sc-footer">
-                GERENCIADO NO GAMEVAULT • SUA COLEÇÃO, SEU LEGADO.
-            </div>
+            <div class="sc-footer">GERENCIADO NO GAMEVAULT • SUA COLEÇÃO, SEU LEGADO.</div>
         </div>
     </div>
 
-    <noscript>
-        <div style="position:fixed; inset:0; bg:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">
-            O JavaScript é necessário para acessar o Vault.
-        </div>
-    </noscript>
+    <noscript><div style="position:fixed; inset:0; bg:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">O JavaScript é necessário para acessar o Vault.</div></noscript>
 
+    <script>window.currentUser = null;</script>
     <script type="module" src="js/main.js"></script>
 
     <script>
         window.onload = function() {
             if(window.particlesJS) {
                 particlesJS('particles-js', {
-                  "particles": {
-                    "number": { "value": 60, "density": { "enable": true, "value_area": 800 } },
-                    "color": { "value": ["#d946ef", "#0ea5e9"] },
-                    "shape": { "type": "circle" },
-                    "opacity": { "value": 0.5, "random": true },
-                    "size": { "value": 3, "random": true },
-                    "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.1, "width": 1 },
-                    "move": { "enable": true, "speed": 1 }
-                  },
-                  "interactivity": {
-                    "detect_on": "canvas",
-                    "events": { "onhover": { "enable": true, "mode": "grab" } }
-                  }
+                  "particles": { "number": { "value": 40, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#ffffff" }, "shape": { "type": "circle" }, "opacity": { "value": 0.1, "random": true }, "size": { "value": 2, "random": true }, "line_linked": { "enable": false }, "move": { "enable": true, "speed": 0.5, "direction": "none", "random": true, "out_mode": "out" } },
+                  "interactivity": { "detect_on": "canvas", "events": { "onhover": { "enable": false }, "onclick": { "enable": false } } }, "retina_detect": true
                 });
             }
         };

@@ -255,3 +255,24 @@
 .brand-icon { color: var(--primary); text-shadow: 0 0 20px var(--primary); }
 .input-center { text-align: center; font-family: var(--font-num); letter-spacing: 2px; font-size: 1.2rem !important; }
 .full-width { width: 100%; display: flex; justify-content: center; }
+
+/* === NOVO: ESTILIZAÇÃO DA BARRA DE ROLAGEM (SCROLLBAR) === */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #0a0a0c; 
+}
+::-webkit-scrollbar-thumb {
+    background: #333; 
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary); 
+}
+
+/* Ajuste específico para conteúdo modal se necessário */
+.modal-content::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.3);
+}

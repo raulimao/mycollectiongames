@@ -10,8 +10,19 @@ class Store {
     getInitialState() {
         return {
             user: null,
+            userProfile: null, // Dados completos do perfil (avatar, etc)
             games: [],
-            filter: 'collection', // collection | backlog | sold
+            
+            // --- DADOS SOCIAIS ---
+            feedData: [], 
+            userLikes: [], 
+            notifications: [], 
+            profileStats: { followers_count: 0, following_count: 0, games_count: 0 },
+            isFollowingCurrent: false,
+            isNotificationsOpen: false, // NOVO: Controla se o painel está visível
+            
+            // --- DADOS DE UI ---
+            filter: 'collection',
             searchTerm: '',
             activePlatform: null,
             chartMode: 'platform',
@@ -20,29 +31,16 @@ class Store {
         };
     }
 
-    /**
-     * Inscreve uma função para ser notificada quando o estado mudar
-     * @param {Function} listener 
-     */
     subscribe(listener) {
         this.listeners.push(listener);
     }
 
-    /**
-     * Atualiza o estado e notifica os ouvintes
-     * @param {Object} newState - Parte do estado a ser atualizada
-     */
     setState(newState) {
         const prevState = { ...this.state };
         this.state = { ...this.state, ...newState };
-        
-        // Notifica listeners passando estado novo e antigo
         this.listeners.forEach(listener => listener(this.state, prevState));
     }
     
-    /**
-     * Reseta o estado (ex: Logout)
-     */
     reset() {
         this.state = this.getInitialState();
         this.notify();
@@ -52,12 +50,9 @@ class Store {
         this.listeners.forEach(listener => listener(this.state));
     }
     
-    /**
-     * Retorna uma cópia do estado atual
-     */
     get() { 
         return { ...this.state }; 
     }
 }
 
-export const appStore = new Store();
+export const appStore = new Store();    
