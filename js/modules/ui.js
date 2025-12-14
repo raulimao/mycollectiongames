@@ -222,17 +222,17 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
         const blockCount = state.visitedBlockchainData?.blocks?.length || 0;
         console.log('🎨 Rendering visitor header - blockchain data:', state.visitedBlockchainData, 'count:', blockCount);
 
-        // Calculate XP for visited user (same logic as owner)
+        // Calculate XP for visited user (SAME FORMULA as renderXP)
+        const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
         const visitorStats = state.allGamesStats || [];
-        const totalValue = visitorStats.reduce((sum, g) => sum + (g.current_value || 0), 0);
-        const totalGames = visitorStats.length;
-        const visitorXP = Math.floor(totalValue / 10) + (totalGames * 50);
-        const visitorLevel = Math.floor(visitorXP / 1000) + 1;
-        const xpForCurrentLevel = (visitorLevel - 1) * 1000;
-        const xpForNextLevel = visitorLevel * 1000;
-        const xpProgress = visitorXP - xpForCurrentLevel;
-        const xpNeeded = xpForNextLevel - xpForCurrentLevel;
-        const xpPercentage = (xpProgress / xpNeeded) * 100;
+        let visitorXP = 0;
+        visitorStats.forEach(g => visitorXP += (XP_TABLE[g.status] || 0));
+
+        const XP_PER_LEVEL = 2000;
+        const visitorLevel = Math.floor(visitorXP / XP_PER_LEVEL) + 1;
+        const xpInCurrentLevel = visitorXP % XP_PER_LEVEL;
+        const xpForNextLevel = XP_PER_LEVEL;
+        const xpPercentage = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
 
         centerHtml = `
             <div style="display:flex; align-items:center; gap:20px">
@@ -247,7 +247,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                 <div style="min-width: 180px; border-left:1px solid rgba(255,255,255,0.1); padding-left:20px;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:5px; align-items:baseline">
                         <span style="color:var(--primary); font-weight:bold; font-size:1rem; font-family:var(--font-num)">LVL ${visitorLevel}</span>
-                        <span style="font-size:0.7rem; color:#666">${visitorXP} / ${xpForNextLevel} XP</span>
+                        <span style="font-size:0.7rem; color:#666">${xpInCurrentLevel} / ${xpForNextLevel} XP</span>
                     </div>
                     <div style="width:100%; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden">
                         <div style="width: ${xpPercentage}%; height:100%; background:linear-gradient(90deg, var(--primary), #a855f7); transition: width 0.5s ease;"></div>
@@ -1265,8 +1265,12 @@ export const generateSocialCard = async () => {
             mvpCard.classList.add('mvp-card');
         }
 
-        // Level
-        const level = Math.floor(displayGamesCount / 10) + 1;
+        // Level (SAME FORMULA as renderXP)
+        const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
+        let cardTotalXP = 0;
+        source.forEach(g => cardTotalXP += (XP_TABLE[g.status] || 0));
+        const XP_PER_LEVEL = 2000;
+        const level = Math.floor(cardTotalXP / XP_PER_LEVEL) + 1;
         levelEl.innerText = `LVL ${level}`;
 
         // 3.5 DETERMINE RARITY
