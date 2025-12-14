@@ -1332,8 +1332,12 @@ export const generateSocialCard = async () => {
             card.querySelector('.nft-header').appendChild(rarityBadgePill);
         }
 
-        // QR Code
-        const profileUrl = window.location.href.split('?')[0] + '?u=' + (sharedProfileName || (user && user.user_metadata ? user.user_metadata.full_name : 'Gamer'));
+        // QR Code - Link to user profile
+        // Priority: 1) userProfile.nickname (current profile), 2) sharedProfileName (visitor mode), 3) user.nickname (logged user)
+        const currentProfile = appStore.get().userProfile;
+        const userNickname = (currentProfile?.nickname) || sharedProfileName || (user?.user_metadata?.nickname) || 'gamer';
+        const profileUrl = `${window.location.origin}${window.location.pathname}?u=${userNickname}`;
+        console.log('🔍 QR Code - Nickname:', userNickname, 'URL:', profileUrl);
         const qrContainer = card.querySelector('.nft-qr');
         if (qrContainer) {
             qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(profileUrl)}&color=000000&bgcolor=FFFFFF" style="width:100%; height:100%; object-fit:contain; display:block;" crossorigin="anonymous">`;
