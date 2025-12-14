@@ -15,9 +15,46 @@ window.toggleTag = (btn) => {
     document.getElementById('inputTags').value = JSON.stringify(values);
 };
 
+// GLOBAL STATE FOR PAGINATION
+let currentPage = 0;
+// GAMES_PER_PAGE Removed (Use store level paginationLimit)
+let isLoadingMore = false;
+
+// Client-Side Pagination Strategy
+window.loadMoreGames = async () => {
+    if (isLoadingMore) return;
+
+    const { paginationLimit, allGamesStats } = appStore.get();
+
+    // Safety check
+    if (!allGamesStats || paginationLimit >= allGamesStats.length) return;
+
+    isLoadingMore = true;
+
+    // Simulate "Loading" just for UI feedback (optional, but feels nice)
+    const btn = document.getElementById('btnLoadMore');
+    let originalText = "";
+    if (btn) {
+        originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando...';
+        btn.disabled = true;
+    }
+
+    // Small timeout to allow UI update before heavy render if needed, or just immediate.
+    setTimeout(() => {
+        appStore.setState({ paginationLimit: paginationLimit + 16 });
+        isLoadingMore = false;
+        // Button state logic is handled in rencderGrid
+    }, 300);
+};
+
+// Infinite Scroll Setup
+// Infinite Scroll Removed - Manual Load More Button Strategy
+// window.setupInfiniteScroll = () => { ... }
+
 window.handleLogoClick = () => {
     const { user, isSharedMode } = appStore.get();
-    if (isSharedMode) { window.location.href = window.location.pathname; } 
+    if (isSharedMode) { window.location.href = window.location.pathname; }
     else {
         if (!user) document.getElementById('loginOverlay').classList.remove('hidden');
         else { showToast("Atualizando...", "info"); loadData(user.id); }
@@ -25,19 +62,25 @@ window.handleLogoClick = () => {
 };
 
 window.handleLoginRequest = () => document.getElementById('loginOverlay').classList.remove('hidden');
-window.handleLogout = () => { if(confirm("Sair?")) AuthService.signOut(); };
+
+// Initialize Scroll logic on load
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.setupInfiniteScroll) window.setupInfiniteScroll();
+});
+window.handleLogout = () => { if (confirm("Sair?")) AuthService.signOut(); };
 
 window.handleFollow = async () => {
-    const { user, games, sharedProfileName } = appStore.get();
+    const { user, games, sharedProfileName, visitedUserId } = appStore.get();
     if (!user) { showToast("Faça login para seguir!", "error"); return; }
-    if (!games || games.length === 0) return;
 
-    const ownerId = games[0].user_id;
+    // Fix: Use visitedUserId in shared mode, fallback to games array
+    const ownerId = visitedUserId || (games && games.length > 0 ? games[0].user_id : null);
+    if (!ownerId) { showToast("Erro ao identificar usuário.", "error"); return; }
     if (ownerId === user.id) { showToast("Você não pode seguir a si mesmo.", "warning"); return; }
 
     try {
         const btn = document.getElementById('btnFollow');
-        if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
 
         const isNowFollowing = await SocialService.toggleFollow(user.id, ownerId);
         appStore.setState({ isFollowingCurrent: isNowFollowing });
@@ -56,7 +99,7 @@ window.handleLike = async (btn, feedId) => {
     if (!user) { showToast("Faça login para curtir!", "error"); return; }
 
     const isLiked = btn.classList.contains('liked');
-    
+
     btn.classList.toggle('liked');
     const span = btn.querySelector('span');
     let count = parseInt(span.innerText);
@@ -65,7 +108,7 @@ window.handleLike = async (btn, feedId) => {
     try {
         const result = await SocialService.toggleLike(feedId, user.id);
         const newFeedData = feedData.map(post => {
-            if(post.id === feedId) {
+            if (post.id === feedId) {
                 return { ...post, likes_count: result === 'added' ? post.likes_count + 1 : Math.max(0, post.likes_count - 1) };
             }
             return post;
@@ -76,22 +119,47 @@ window.handleLike = async (btn, feedId) => {
     } catch (e) {
         console.error(e);
         showToast("Erro ao curtir.", "error");
-        btn.classList.toggle('liked'); 
+        btn.classList.toggle('liked');
         span.innerText = count;
+    }
+};
+
+
+
+window.runFeedCleanup = async () => {
+    const { user } = appStore.get();
+    if (!user) { showToast("Faça login primeiro.", "error"); return; }
+
+    if (!confirm("Isso irá verificar seu feed e remover postagens de jogos que você já deletou. Deseja continuar?")) return;
+
+    try {
+        showToast("Verificando consistência do feed...", "info");
+        const count = await SocialService.cleanupOrphanedFeed(user.id);
+        if (count > 0) {
+            showToast(`Limpeza concluída! ${count} itens órfãos removidos.`, "success");
+            // Refresh feed if active
+            const btn = document.querySelector('button[data-tab="feed"]');
+            if (btn && btn.classList.contains('active')) btn.click();
+        } else {
+            showToast("Seu feed já está sincronizado.", "success");
+        }
+    } catch (e) {
+        console.error(e);
+        showToast("Erro na limpeza.", "error");
     }
 };
 
 window.openNotifications = () => {
     const { isNotificationsOpen, user, notifications } = appStore.get();
-    
+
     if (isNotificationsOpen) {
         appStore.setState({ isNotificationsOpen: false });
     } else {
-        if(user) SocialService.markAllNotificationsRead(user.id);
+        if (user) SocialService.markAllNotificationsRead(user.id);
         const readNotifs = notifications.map(n => ({ ...n, read: true }));
-        appStore.setState({ 
-            isNotificationsOpen: true, 
-            notifications: readNotifs 
+        appStore.setState({
+            isNotificationsOpen: true,
+            notifications: readNotifs
         });
     }
 };
@@ -100,10 +168,10 @@ window.handleNotificationClick = async (notifId, type, actorNick, relatedId) => 
     await SocialService.markNotificationRead(notifId);
     const { notifications } = appStore.get();
     const newNotifs = notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
-    
-    if(type === 'FOLLOW') {
+
+    if (type === 'FOLLOW') {
         window.location.href = `?u=${actorNick}`;
-    } else if(type === 'LIKE') {
+    } else if (type === 'LIKE') {
         appStore.setState({ notifications: newNotifs, isNotificationsOpen: false });
         document.querySelector('button[data-tab="feed"]').click();
         showToast(`Atividade curtida por ${actorNick}`, "info");
@@ -120,8 +188,13 @@ window.handleEditProfile = () => {
 };
 
 window.openNetwork = async (type) => {
-    const { user, games } = appStore.get();
-    const targetUserId = (games && games.length > 0) ? games[0].user_id : user?.id;
+    const { user, games, visitedUserId, isSharedMode } = appStore.get();
+
+    // Fix: In shared mode, use visitedUserId; otherwise use games[0] or current user
+    const targetUserId = isSharedMode && visitedUserId
+        ? visitedUserId
+        : (games && games.length > 0 ? games[0].user_id : user?.id);
+
     if (!targetUserId) return;
 
     document.getElementById('networkModal').classList.remove('hidden');
@@ -153,7 +226,7 @@ window.handleListFollow = async (targetId, btn) => {
             btn.innerText = "Seguir";
             btn.style.borderColor = "var(--primary)"; btn.style.color = "var(--primary)";
         }
-    } catch (e) { showToast("Erro.", "error"); btn.innerText = originalText; } 
+    } catch (e) { showToast("Erro.", "error"); btn.innerText = originalText; }
     finally { btn.disabled = false; }
 };
 
@@ -161,6 +234,9 @@ const init = async () => {
     console.log("🚀 [System] GameVault Init");
     appStore.subscribe(state => renderApp(state));
     setupGlobalEvents();
+
+    // Infinite Scroll Removed
+    // setupInfiniteScroll();
 
     const urlParams = new URLSearchParams(window.location.search);
     const sharedNick = urlParams.get('u');
@@ -176,13 +252,13 @@ const init = async () => {
 const setupRealtime = (userId) => {
     console.log("📡 [Realtime] Conectando para:", userId);
     supabase.channel('public:notifications')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, 
-        async (payload) => {
-            console.log("🔔 Nova Notificação!", payload);
-            showToast("Você tem uma nova notificação!", "info");
-            const notifs = await SocialService.getNotifications(userId);
-            appStore.setState({ notifications: notifs });
-        })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+            async (payload) => {
+                console.log("🔔 Nova Notificação!", payload);
+                showToast("Você tem uma nova notificação!", "info");
+                const notifs = await SocialService.getNotifications(userId);
+                appStore.setState({ notifications: notifs });
+            })
         .subscribe();
 };
 
@@ -201,7 +277,7 @@ const checkAuthStatus = () => {
         const loader = document.getElementById('globalLoader');
         if (loader && !loader.classList.contains('hidden')) {
             loader.classList.add('hidden');
-            if(document.getElementById('appContainer').classList.contains('hidden')) document.getElementById('loginOverlay').classList.remove('hidden');
+            if (document.getElementById('appContainer').classList.contains('hidden')) document.getElementById('loginOverlay').classList.remove('hidden');
         }
     }, 5000);
 
@@ -238,7 +314,7 @@ const handleUserLoggedIn = async (user) => {
             setTimeout(() => document.getElementById('nicknameModal').classList.remove('hidden'), 500);
             setupNicknameForm(user);
         } else {
-            appStore.setState({ sharedProfileName: profile.nickname, userProfile: profile }); 
+            appStore.setState({ sharedProfileName: profile.nickname, userProfile: profile });
         }
         setupAuthEvents();
         await loadData(user.id);
@@ -252,15 +328,31 @@ const loadData = async (userId, isPartial = false) => {
             appStore.setState({ profileStats: stats });
             return;
         }
+
+        // Reset pagination
+        currentPage = 0;
+
         const userProfile = await GameService.getMyProfile(userId);
-        
-        const [games, stats, notifications, userLikes] = await Promise.all([
-            GameService.fetchGames(userId),
+
+        // Parallel Fetch: Stats (All), Notifications, Likes
+        // We removed 'fetchGames' (paginated) in favor of Client-Side Pagination using 'allStats'
+        const [stats, notifications, userLikes, allStats] = await Promise.all([
             SocialService.getProfileStats(userId),
             SocialService.getNotifications(userId),
-            SocialService.getUserLikes(userId)
+            SocialService.getUserLikes(userId),
+            GameService.fetchStatsOnly(userId) // This returns ALL games (lightweight fields)
         ]);
-        appStore.setState({ games, profileStats: stats, notifications, userLikes, userProfile });
+
+        appStore.setState({
+            games: [], // Deprecated for grid source, but kept for compatibility. UI uses sliced allGamesStats.
+            allGamesStats: allStats || [],
+            profileStats: stats,
+            notifications,
+            userLikes,
+            userProfile,
+            paginationLimit: 16 // Reset limit
+        });
+
     } catch (e) { console.error("LoadData error:", e); }
 };
 
@@ -268,21 +360,36 @@ const handleVisitorMode = async (nickname) => {
     const userId = await GameService.getUserIdByNickname(nickname);
     document.getElementById('globalLoader').classList.add('hidden');
     document.getElementById('loginOverlay').classList.add('hidden');
-    
+
     if (userId) {
         document.getElementById('appContainer').classList.remove('hidden');
-        const [games, stats] = await Promise.all([
-            GameService.fetchSharedGames(userId),
-            SocialService.getProfileStats(userId)
+        // Fix: Use 'fetchStatsOnly' to get ALL games for client-side pagination in Visitor Mode too
+        // Also fetch blockchain data for visitor profile display
+        const [stats, allStats, blockchainData] = await Promise.all([
+            SocialService.getProfileStats(userId),
+            GameService.fetchStatsOnly(userId),
+            import('./services/blockchain.js').then(m => m.loadBlockchainData(userId)).catch(() => ({ blocks: [] }))
         ]);
-        
+
         const { data: { session } } = await supabase.auth.getSession();
         let isFollowing = false;
         if (session?.user && session.user.id !== userId) {
-            try { isFollowing = await SocialService.checkIsFollowing(session.user.id, userId); } catch (e) {}
+            try { isFollowing = await SocialService.checkIsFollowing(session.user.id, userId); } catch (e) { }
         }
 
-        appStore.setState({ games, profileStats: stats, isSharedMode: true, sharedProfileName: nickname, isFollowingCurrent: isFollowing });
+        console.log('📊 Visitor blockchain data:', blockchainData);
+
+        appStore.setState({
+            games: [], // Deprecated
+            allGamesStats: allStats || [], // Full dataset
+            paginationLimit: 16,
+            profileStats: stats,
+            isSharedMode: true,
+            sharedProfileName: nickname,
+            visitedUserId: userId, // Store for Follow button
+            visitedBlockchainData: blockchainData || { blocks: [] }, // Store blockchain data
+            isFollowingCurrent: isFollowing
+        });
     } else {
         alert("Perfil não encontrado!"); window.location.href = window.location.pathname;
     }
@@ -290,7 +397,7 @@ const handleVisitorMode = async (nickname) => {
 
 // CORREÇÃO: Listener global para a tecla ESC
 const setupGlobalEvents = () => {
-    const safeClick = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
+    const safeClick = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
     safeClick('btnGoogle', () => AuthService.signInGoogle());
     safeClick('btnCloseModal', () => toggleModal(false));
     safeClick('btnExport', () => exportData());
@@ -299,8 +406,8 @@ const setupGlobalEvents = () => {
         const { isNotificationsOpen } = appStore.get();
         const panel = document.getElementById('notifPanel');
         const btn = document.querySelector('button[title="Notificações"]');
-        
-        if(isNotificationsOpen && panel && !panel.contains(e.target) && (!btn || !btn.contains(e.target))) {
+
+        if (isNotificationsOpen && panel && !panel.contains(e.target) && (!btn || !btn.contains(e.target))) {
             appStore.setState({ isNotificationsOpen: false });
         }
     });
@@ -309,7 +416,7 @@ const setupGlobalEvents = () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             const modals = [
-                'gameDetailModal', 'gameModal', 'rouletteModal', 'nicknameModal', 
+                'gameDetailModal', 'gameModal', 'rouletteModal', 'nicknameModal',
                 'networkModal', 'profileEditModal'
             ];
             let closedAny = false;
@@ -322,7 +429,7 @@ const setupGlobalEvents = () => {
             });
             // Também fecha o painel de notificação se estiver aberto
             const { isNotificationsOpen } = appStore.get();
-            if(!closedAny && isNotificationsOpen) {
+            if (!closedAny && isNotificationsOpen) {
                 appStore.setState({ isNotificationsOpen: false });
             }
         }
@@ -331,22 +438,22 @@ const setupGlobalEvents = () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const clickedBtn = e.target.closest('.tab-btn');
-            if(!clickedBtn) return;
+            if (!clickedBtn) return;
             const tab = clickedBtn.dataset.tab;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             clickedBtn.classList.add('active');
-            
+
             if (tab === 'feed') {
                 try {
                     const feed = await SocialService.getGlobalFeed();
                     const { user } = appStore.get();
-                    if(user) {
+                    if (user) {
                         const likes = await SocialService.getUserLikes(user.id);
                         appStore.setState({ filter: 'feed', feedData: feed, userLikes: likes });
                     } else {
                         appStore.setState({ filter: 'feed', feedData: feed });
                     }
-                } catch(err) { showToast("Erro no feed.", "error"); }
+                } catch (err) { showToast("Erro no feed.", "error"); }
             } else {
                 appStore.setState({ filter: tab });
             }
@@ -354,7 +461,7 @@ const setupGlobalEvents = () => {
     });
 
     const searchInput = document.getElementById('searchInput');
-    if(searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
+    if (searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
     setupRoulette();
 };
 
@@ -362,9 +469,9 @@ const setupAuthEvents = () => {
     document.getElementById('btnOpenAddModal').onclick = () => openGameModal();
     document.getElementById('gameForm').onsubmit = handleFormSubmit;
     document.getElementById('btnDeleteGame').onclick = handleDelete;
-    
+
     const profileForm = document.getElementById('profileEditForm');
-    if(profileForm) {
+    if (profileForm) {
         profileForm.onsubmit = async (e) => {
             e.preventDefault();
             const { user } = appStore.get();
@@ -376,7 +483,7 @@ const setupAuthEvents = () => {
                 showToast("Perfil atualizado!");
                 document.getElementById('profileEditModal').classList.add('hidden');
                 loadData(user.id);
-            } catch(err) { showToast("Erro ao salvar.", "error"); }
+            } catch (err) { showToast("Erro ao salvar.", "error"); }
             finally { btn.innerText = "SALVAR ALTERAÇÕES"; btn.disabled = false; }
         };
     }
@@ -400,7 +507,7 @@ const setupNicknameForm = (user) => {
             await GameService.createProfile(nick);
             document.getElementById('nicknameModal').classList.add('hidden');
             appStore.setState({ sharedProfileName: nick });
-        } catch(err) { alert("Erro: " + err.message); }
+        } catch (err) { alert("Erro: " + err.message); }
     };
 };
 
@@ -417,12 +524,17 @@ const openGameModal = (gameId = null) => {
 
     if (gameId) {
         document.getElementById('modalTitle').innerText = "EDITAR JOGO";
+        document.getElementById('modalTitle').innerText = "EDITAR JOGO";
         document.getElementById('btnDeleteGame').classList.remove('hidden');
-        const game = appStore.get().games.find(g => g.id === gameId);
-        if(game) {
+
+        // Fix: Look up in allGamesStats since 'games' might be partial or empty
+        const { allGamesStats } = appStore.get();
+        const game = allGamesStats ? allGamesStats.find(g => g.id === gameId) : null;
+
+        if (game) {
             document.getElementById('inputGameName').value = game.title;
             const select = document.getElementById('inputPlatform');
-            if(![...select.options].some(o => o.value === game.platform)) {
+            if (![...select.options].some(o => o.value === game.platform)) {
                 const opt = document.createElement('option');
                 opt.value = game.platform; opt.innerText = game.platform;
                 select.appendChild(opt);
@@ -435,11 +547,11 @@ const openGameModal = (gameId = null) => {
             if (game.tags) {
                 game.tags.forEach(tag => {
                     const btn = document.querySelector(`.tag-toggle[data-val="${tag}"]`);
-                    if(btn) btn.classList.add('active');
+                    if (btn) btn.classList.add('active');
                 });
                 document.getElementById('inputTags').value = JSON.stringify(game.tags);
             }
-            if(['Vendido', 'À venda'].includes(game.status)) document.getElementById('soldGroup').classList.remove('hidden');
+            if (['Vendido', 'À venda'].includes(game.status)) document.getElementById('soldGroup').classList.remove('hidden');
         }
     } else {
         document.getElementById('modalTitle').innerText = "NOVO JOGO";
@@ -457,30 +569,67 @@ const handleFormSubmit = async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type="submit"]');
     const oldText = btn.innerText;
-    btn.innerText = "SALVANDO..."; btn.disabled = true;
+
+    // VALIDATION: Negative Prices
+    const pPaid = Number(document.getElementById('inputPrice').value) || 0;
+    const pSold = Number(document.getElementById('inputSoldPrice').value) || 0;
+
+    if (pPaid < 0 || pSold < 0) {
+        showToast("Os preços não podem ser negativos.", "error");
+        return;
+    }
+
+    const title = document.getElementById('inputGameName').value.trim();
+    if (!title) {
+        showToast("O jogo precisa de um nome.", "error");
+        return;
+    }
+
+    const platform = document.getElementById('inputPlatform').value || 'Outros';
+
+    btn.innerText = "VERIFICANDO..."; btn.disabled = true;
+
     try {
+        const { user } = appStore.get();
+        if (!user) throw new Error("Usuário não autenticado.");
+
+        // VALIDATION: Duplicates (Only for new games)
+        // Optimization: Use Client-Side check instead of Server call
+        if (!editingId) {
+            const { allGamesStats } = appStore.get();
+            const normalize = s => s.toLowerCase().trim();
+            const isDup = allGamesStats && allGamesStats.some(g => normalize(g.title) === normalize(title) && g.platform === platform);
+
+            if (isDup) {
+                showToast(`Você já tem "${title}" para ${platform}.`, "warning");
+                return; // Stop execution
+            }
+        }
+
+        btn.innerText = "SALVANDO...";
+
         const data = {
-            title: document.getElementById('inputGameName').value,
-            platform: document.getElementById('inputPlatform').value || 'Outros',
+            title: title,
+            platform: platform,
             status: document.getElementById('inputStatus').value,
-            price_paid: Number(document.getElementById('inputPrice').value) || 0,
-            price_sold: Number(document.getElementById('inputSoldPrice').value) || 0,
+            price_paid: pPaid,
+            price_sold: pSold,
             image_url: document.getElementById('inputImage').value,
             tags: JSON.parse(document.getElementById('inputTags').value || '[]')
         };
         if (editingId) await GameService.updateGame(editingId, data);
         else await GameService.addGame(data);
         showToast("Salvo!"); toggleModal(false);
-        const { user } = appStore.get(); if(user) loadData(user.id);
-    } catch (error) { showToast("Erro: " + error.message, "error"); } 
+        if (user) loadData(user.id);
+    } catch (error) { console.error(error); showToast("Erro: " + error.message, "error"); }
     finally { btn.innerText = oldText; btn.disabled = false; }
 };
 
 const handleDelete = async () => {
-    if(confirm("Excluir jogo?")) {
+    if (confirm("Excluir jogo?")) {
         await GameService.deleteGame(editingId);
         toggleModal(false);
-        const { user } = appStore.get(); if(user) loadData(user.id);
+        const { user } = appStore.get(); if (user) loadData(user.id);
         showToast("Excluído.");
     }
 };
@@ -501,7 +650,7 @@ const setupRawgSearch = () => {
             resultsDiv.innerHTML = '<div style="padding:10px; color:#666">...</div>';
             const games = await GameService.searchRawg(query);
             resultsDiv.innerHTML = '';
-            if(games.length === 0) { resultsDiv.classList.add('hidden'); return; }
+            if (games.length === 0) { resultsDiv.classList.add('hidden'); return; }
 
             games.forEach(g => {
                 const el = document.createElement('div');
@@ -512,7 +661,7 @@ const setupRawgSearch = () => {
                     document.getElementById('inputImage').value = g.background_image;
                     resultsDiv.classList.add('hidden');
                     const select = document.getElementById('inputPlatform');
-                    select.innerHTML = ''; 
+                    select.innerHTML = '';
                     const platforms = g.platforms || [];
                     if (platforms.length === 1) {
                         const opt = document.createElement('option'); opt.value = platforms[0].platform.name; opt.text = platforms[0].platform.name; opt.selected = true; select.appendChild(opt);

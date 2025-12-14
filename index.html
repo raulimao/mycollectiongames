@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GameVault | Cyberpunk Edition</title>
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/components.css">
 
@@ -18,7 +21,11 @@
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
+
 <body>
 
     <div id="dynamic-bg-layer"></div>
@@ -40,7 +47,8 @@
                 <i class="fa-brands fa-google"></i> Entrar com Google
             </button>
             <p style="margin-top:20px; color:#666; font-size:0.8rem">
-                Visitando? <a href="#" onclick="document.getElementById('loginOverlay').classList.add('hidden');" style="color:var(--primary)">Apenas navegar</a>
+                Visitando? <a href="#" onclick="document.getElementById('loginOverlay').classList.add('hidden');"
+                    style="color:var(--primary)">Apenas navegar</a>
             </p>
         </div>
     </div>
@@ -48,20 +56,19 @@
     <div id="appContainer" class="app-container hidden">
         <header class="glass-header">
             <div class="header-left">
-                <div class="logo" onclick="window.handleLogoClick()" style="cursor: pointer;" title="Ir para Home / Login">
+                <div class="logo" onclick="window.handleLogoClick()" style="cursor: pointer;"
+                    title="Ir para Home / Login">
                     <span class="icon">👾</span>
                     <h1>VAULT <small class="pro-badge">PRO</small></h1>
                 </div>
-                
-                <div id="xpContainer" class="xp-display hidden">
-                    <div class="xp-info">
-                        <span class="level-badge" id="userLevelBadge">LVL 1</span>
-                        <span class="xp-label" id="xpText">0 / 1000 XP</span>
-                    </div>
-                    <div class="xp-bar-bg">
-                        <div id="xpProgressBar" class="xp-bar-fill" style="width: 0%"></div>
-                    </div>
+
+                <!-- Wallet Button -->
+                <div id="walletBadge" class="wallet-badge hidden" title="Minha Blockchain Local"
+                    style="margin-left: 20px; cursor: pointer;">
+                    <i class="fa-solid fa-cube"></i> <span id="blockCount">0</span> BLOCKS
                 </div>
+
+                <!-- XP Container REMOVED: Will be injected into Center/Profile area dynamically -->
             </div>
 
             <div class="user-profile">
@@ -73,22 +80,27 @@
 
         <section class="dashboard-grid">
             <div id="kpi-container" class="kpi-group"></div>
-            
+
             <div class="chart-container glass-panel">
                 <div class="chart-header">
                     <span class="chart-title-deco">ANALYTICS // SYSTEM</span>
                     <div class="chart-controls">
-                        <button class="chart-tab active" onclick="window.switchChart('platform')"><i class="fa-solid fa-gamepad"></i> PLATFORM</button>
-                        <button class="chart-tab" onclick="window.switchChart('status')"><i class="fa-solid fa-chart-pie"></i> STATUS</button>
-                        <button class="chart-tab" onclick="window.switchChart('dna')"><i class="fa-solid fa-dna"></i> DNA</button>
-                        <button class="chart-tab" onclick="window.switchChart('cost')"><i class="fa-solid fa-coins"></i> GASTOS</button>
+                        <button class="chart-tab active" onclick="window.switchChart('platform')"><i
+                                class="fa-solid fa-gamepad"></i> PLATFORM</button>
+                        <button class="chart-tab" onclick="window.switchChart('status')"><i
+                                class="fa-solid fa-chart-pie"></i> STATUS</button>
+                        <button class="chart-tab" onclick="window.switchChart('dna')"><i class="fa-solid fa-dna"></i>
+                            DNA</button>
+                        <button class="chart-tab" onclick="window.switchChart('cost')"><i class="fa-solid fa-coins"></i>
+                            GASTOS</button>
                     </div>
                 </div>
                 <div class="canvas-wrapper">
                     <canvas id="collectionChart"></canvas>
                 </div>
                 <div id="chartFilterBadge" class="chart-filter-badge hidden" onclick="window.clearChartFilter()">
-                    <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span> <small>(Limpar)</small>
+                    <i class="fa-solid fa-filter"></i> FILTRANDO: <span id="filterName">...</span>
+                    <small>(Limpar)</small>
                 </div>
             </div>
         </section>
@@ -100,24 +112,31 @@
                 <button class="tab-btn" data-tab="wishlist">Desejados</button>
                 <button class="tab-btn" data-tab="store"><i class="fa-solid fa-shop"></i> Loja</button>
                 <button class="tab-btn" data-tab="sold">Vendidos</button>
-                <button class="tab-btn" data-tab="feed" style="color: var(--secondary)"><i class="fa-solid fa-satellite-dish"></i> Feed</button>
+                <button class="tab-btn" data-tab="feed" style="color: var(--secondary)"><i
+                        class="fa-solid fa-satellite-dish"></i> Feed</button>
             </div>
-            <div class="filters-group">
-                <button id="btnRoulette" class="btn-primary btn-pulse" style="background: var(--secondary); margin-right: 10px; min-width: 50px;" title="Escolher jogo aleatório">
-                    <i class="fa-solid fa-dice fa-lg"></i>
-                </button>
+            <div class="toolbar-actions">
+                <div class="tools-wrapper">
+                    <button id="btnRoulette" class="btn-primary btn-icon btn-pulse" title="Escolher jogo aleatório"
+                        aria-label="Escolher jogo aleatório">
+                        <i class="fa-solid fa-dice fa-lg"></i>
+                    </button>
 
-                <button id="btnExport" class="btn-primary" style="background: #333; margin-right: 10px; min-width: 50px;" title="Backup de Dados (JSON)">
-                    <i class="fa-solid fa-download"></i>
-                </button>
-
-                <div class="search-box">
-                    <i class="fa-solid fa-search"></i>
-                    <input type="text" id="searchInput" placeholder="Buscar na coleção...">
+                    <button id="btnExport" class="btn-primary btn-icon" title="Backup de Dados (JSON)"
+                        aria-label="Backup de Dados">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
                 </div>
-                <button id="btnOpenAddModal" class="btn-primary">
-                    <i class="fa-solid fa-plus"></i> NOVO JOGO
-                </button>
+
+                <div class="main-wrapper">
+                    <div class="search-box">
+                        <i class="fa-solid fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Buscar na coleção...">
+                    </div>
+                    <button id="btnOpenAddModal" class="btn-primary btn-new-game">
+                        <i class="fa-solid fa-plus"></i> NOVO JOGO
+                    </button>
+                </div>
             </div>
         </section>
 
@@ -138,7 +157,8 @@
                 <input type="hidden" id="editGameId">
                 <div class="input-group">
                     <label>Nome do Jogo (Busca Automática)</label>
-                    <input type="text" id="inputGameName" placeholder="Ex: Cyberpunk 2077..." autocomplete="off" required>
+                    <input type="text" id="inputGameName" placeholder="Ex: Cyberpunk 2077..." autocomplete="off"
+                        required>
                     <div id="apiResults" class="api-results hidden"></div>
                 </div>
                 <div class="row-flex">
@@ -179,11 +199,15 @@
                 <div class="input-group">
                     <label>Etiquetas / Detalhes</label>
                     <div id="tagsContainer" class="tags-selector">
-                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Lacrado">✨ Lacrado</button>
+                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Lacrado">✨
+                            Lacrado</button>
                         <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Novo">Novo</button>
-                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Completo">📦 Completo (CIB)</button>
-                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Usado">💿 Usado</button>
-                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Digital">☁️ Digital</button>
+                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Completo">📦
+                            Completo (CIB)</button>
+                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Usado">💿
+                            Usado</button>
+                        <button type="button" class="tag-toggle" onclick="toggleTag(this)" data-val="Digital">☁️
+                            Digital</button>
                     </div>
                     <input type="hidden" id="inputTags">
                 </div>
@@ -197,28 +221,43 @@
     </div>
 
     <div id="gameDetailModal" class="modal-overlay hidden" style="z-index: 3500;">
-        <div class="modal-content glass-panel" style="max-width: 800px; padding: 0; overflow: hidden; max-height: 90vh; overflow-y: auto;">
-            <div id="detailHero" style="height: 200px; background-size: cover; background-position: center; position: relative;">
-                <div style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);"></div>
-                <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn" style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
+        <div class="modal-content glass-panel"
+            style="max-width: 800px; padding: 0; overflow: hidden; max-height: 90vh; overflow-y: auto;">
+            <div id="detailHero"
+                style="height: 200px; background-size: cover; background-position: center; position: relative;">
+                <div
+                    style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);">
+                </div>
+                <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn"
+                    style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
                 <div style="position: absolute; bottom: 20px; left: 30px;">
-                    <div id="detailMetacritic" class="badge bg-plat" style="margin-bottom: 10px; display: inline-block;">MC: --</div>
-                    <h2 id="detailTitle" style="font-family: var(--font-num); font-size: 2rem; text-shadow: 0 0 10px rgba(0,0,0,0.8);">Titulo do Jogo</h2>
+                    <div id="detailMetacritic" class="badge bg-plat"
+                        style="margin-bottom: 10px; display: inline-block;">MC: --</div>
+                    <h2 id="detailTitle"
+                        style="font-family: var(--font-num); font-size: 2rem; text-shadow: 0 0 10px rgba(0,0,0,0.8);">
+                        Titulo do Jogo</h2>
                 </div>
             </div>
             <div style="padding: 30px; display: flex; gap: 30px; flex-wrap: wrap;">
                 <div style="flex: 2; min-width: 300px;">
-                    <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO</h4>
-                    <p id="detailDesc" style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">Carregando...</p>
+                    <h4 style="color: var(--secondary); margin-bottom: 10px; font-family: var(--font-num);">SOBRE O JOGO
+                    </h4>
+                    <p id="detailDesc"
+                        style="color: var(--text-muted); line-height: 1.6; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">
+                        Carregando...</p>
                     <div style="margin-top: 25px; display: flex; gap: 10px;">
-                        <a id="detailLink" href="#" target="_blank" class="btn-primary" style="text-decoration: none; font-size: 0.8rem;">
+                        <a id="detailLink" href="#" target="_blank" class="btn-primary"
+                            style="text-decoration: none; font-size: 0.8rem;">
                             <i class="fa-solid fa-globe"></i> SITE OFICIAL
                         </a>
-                        <button id="btnEditFromDetail" class="btn-small hidden"><i class="fa-solid fa-pen"></i> EDITAR DADOS</button>
+                        <button id="btnEditFromDetail" class="btn-small hidden"><i class="fa-solid fa-pen"></i> EDITAR
+                            DADOS</button>
                     </div>
-                    <div id="detailVideoArea" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
+                    <div id="detailVideoArea"
+                        style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;"></div>
                 </div>
-                <div style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); height: fit-content;">
+                <div
+                    style="flex: 1; min-width: 200px; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); height: fit-content;">
                     <h4 style="color: var(--primary); margin-bottom: 15px; font-family: var(--font-num);">NO COFRE</h4>
                     <div style="margin-bottom: 15px;">
                         <span style="display: block; font-size: 0.75rem; color: #888;">PLATAFORMA</span>
@@ -229,7 +268,8 @@
                         <span id="detailStatusBadge" class="badge">--</span>
                     </div>
                     <div>
-                        <span id="detailPriceLabel" style="display: block; font-size: 0.75rem; color: #888;">VALOR</span>
+                        <span id="detailPriceLabel"
+                            style="display: block; font-size: 0.75rem; color: #888;">VALOR</span>
                         <strong id="detailPrice" style="font-size: 1.2rem; color: var(--success);">--</strong>
                     </div>
                     <div id="detailTagsContainer" style="margin-top: 15px;"></div>
@@ -242,7 +282,8 @@
         <div class="modal-content glass-panel center-content">
             <h2 class="modal-title-center" style="color:var(--secondary)">O ESCOLHIDO</h2>
             <div id="rouletteDisplay" class="roulette-container"></div>
-            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')" style="margin-top: 20px;">ACEITAR DESTINO</button>
+            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')"
+                style="margin-top: 20px;">ACEITAR DESTINO</button>
         </div>
     </div>
 
@@ -253,7 +294,8 @@
             <p class="modal-desc">Crie seu <strong>Gamertag</strong> único para compartilhar sua coleção.</p>
             <form id="nicknameForm">
                 <div class="input-group">
-                    <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required class="input-center" pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
+                    <input type="text" id="inputNickname" placeholder="Ex: CyberNinja99" required class="input-center"
+                        pattern="[a-zA-Z0-9_-]+" title="Apenas letras, números, _ ou -">
                 </div>
                 <button type="submit" class="btn-primary full-width">CONFIRMAR ID</button>
             </form>
@@ -261,10 +303,12 @@
     </div>
 
     <div id="networkModal" class="modal-overlay hidden" style="z-index: 6000;">
-        <div class="modal-content glass-panel" style="max-width: 400px; max-height: 80vh; display:flex; flex-direction:column;">
+        <div class="modal-content glass-panel"
+            style="max-width: 400px; max-height: 80vh; display:flex; flex-direction:column;">
             <div class="modal-header">
                 <h2 id="networkTitle">SEGUIDORES</h2>
-                <button onclick="document.getElementById('networkModal').classList.add('hidden')" class="close-btn">&times;</button>
+                <button onclick="document.getElementById('networkModal').classList.add('hidden')"
+                    class="close-btn">&times;</button>
             </div>
             <div id="networkList" style="overflow-y: auto; flex:1; padding-right:5px;"></div>
         </div>
@@ -274,7 +318,8 @@
         <div class="modal-content glass-panel" style="max-width: 450px;">
             <div class="modal-header">
                 <h2>EDITAR PERFIL</h2>
-                <button onclick="document.getElementById('profileEditModal').classList.add('hidden')" class="close-btn">&times;</button>
+                <button onclick="document.getElementById('profileEditModal').classList.add('hidden')"
+                    class="close-btn">&times;</button>
             </div>
             <form id="profileEditForm">
                 <div class="input-group">
@@ -284,7 +329,8 @@
                 <div class="input-group">
                     <label>URL da Foto de Perfil</label>
                     <input type="url" id="editAvatar" placeholder="https://...">
-                    <small style="color:#666; display:block; margin-top:5px;">Cole o link direto de uma imagem (Imgur, Discord, etc).</small>
+                    <small style="color:#666; display:block; margin-top:5px;">Cole o link direto de uma imagem (Imgur,
+                        Discord, etc).</small>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-primary">SALVAR ALTERAÇÕES</button>
@@ -295,41 +341,138 @@
 
     <div id="toastContainer" class="toast-container"></div>
 
-    <div id="socialCardHidden" class="social-card-template">
-        <div class="sc-glow-1"></div>
-        <div class="sc-glow-2"></div>
-        <div class="sc-content">
-            <div class="sc-header">
-                <div class="sc-brand"><h1><i class="fa-solid fa-gamepad" style="color:var(--primary); margin-right:15px"></i> GAME<span>VAULT</span></h1></div>
-                <div class="sc-profile">
-                    <div class="sc-info" style="text-align: right;"><h2 id="scName">PLAYER</h2><span id="scLevel" class="sc-badge">LVL 1</span></div>
-                    <img id="scAvatar" src="" class="sc-avatar" crossorigin="anonymous">
+    <!-- NFT SOCIAL CARD HIDDEN -->
+    <div style="position:fixed; left:-9999px; top:0;">
+        <div id="socialCardHidden" class="nft-card">
+            <!-- Holographic Overlay -->
+            <div class="nft-holo"></div>
+            <!-- Vertical Hash (Code Rain) -->
+            <div class="nft-side-hash" id="scHash"></div>
+
+            <!-- Header -->
+            <div class="nft-header">
+                <div class="nft-header-left">
+                    <div class="nft-brand">
+                        <i class="fa-solid fa-gamepad"></i> GAME<span>VAULT</span>
+                    </div>
+                </div>
+                <div class="nft-header-right">
+                    <!-- Rarity Badge Injected Here -->
                 </div>
             </div>
-            <div class="sc-grid">
-                <div class="sc-card"><label>Coleção</label><strong id="scTotalGames">0</strong></div>
-                <div class="sc-card"><label>Zerados</label><strong id="scCompleted" style="color:var(--success)">0</strong></div>
-                <div class="sc-card"><label>Investido</label><strong id="scValue" style="color:var(--gold); font-size: 2.2rem;">R$ 0</strong></div>
-                <div class="sc-card"><label>Favorita</label><strong id="scTopPlatform" style="color:var(--secondary); font-size: 1.8rem; word-break: break-word; line-height: 1.1;">PC</strong></div>
+
+            <div class="nft-sub-header">
+                <div class="wallet-badge-card">
+                    <i class="fa-solid fa-cube"></i> <span id="scBlockCount">0</span> BLOCKS
+                </div>
+                <div class="nft-badge">LEGACY PASS</div>
             </div>
-            <div class="sc-footer">GERENCIADO NO GAMEVAULT • SUA COLEÇÃO, SEU LEGADO.</div>
+            <!-- Main Visual / Avatar -->
+            <div class="nft-visual">
+                <div class="nft-ring"></div>
+                <img id="scAvatar" src="" crossorigin="anonymous">
+                <div class="nft-level-tag" id="scLevel">LVL 1</div>
+            </div>
+
+            <!-- Identity -->
+            <div class="nft-identity">
+                <h2 id="scName">PLAYER ONE</h2>
+                <!-- Removed Hash Row -->
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="nft-stats">
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">INVESTIMENTO LÍQ.</span>
+                    <strong class="nft-stat-value gold" id="scValue">R$ 0</strong>
+                </div>
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">JOGOS NA BASE</span>
+                    <strong class="nft-stat-value" id="scGames">0</strong>
+                </div>
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">MVP (MAIOR VALOR)</span>
+                    <strong class="nft-stat-value danger" id="scMVP" title="Jogo mais caro da coleção">N/A</strong>
+                </div>
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">PLATAFORMA</span>
+                    <strong class="nft-stat-value accent" id="scTopPlatform">PC</strong>
+                </div>
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">CONCLUSÃO</span>
+                    <strong class="nft-stat-value success" id="scCompletion">0%</strong>
+                </div>
+                <div class="nft-stat-item">
+                    <span class="nft-stat-label">JOGOS ZERADOS</span>
+                    <strong class="nft-stat-value info" id="scZerados">0</strong>
+                </div>
+                <div class="nft-stat-item split-row">
+                    <div class="stat-col">
+                        <span class="nft-stat-label">VENDIDOS</span>
+                        <strong class="nft-stat-value" id="scSold">0</strong>
+                    </div>
+                    <div class="stat-v-sep"></div>
+                    <div class="stat-col">
+                        <span class="nft-stat-label">LUCRO</span>
+                        <strong class="nft-stat-value success" id="scProfit">R$ 0</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer / Verification -->
+            <div class="nft-footer">
+                <div class="nft-qr">
+                    <!-- CSS Generated QR Pattern -->
+                    <div class="qr-pattern"></div>
+                </div>
+                <div class="nft-meta">
+                    <div class="nft-meta-row">
+                        <span>MINTED</span> <strong id="scDate">2024-01-01</strong>
+                    </div>
+                    <div class="nft-meta-row">
+                        <span>EDITION</span> <strong>GENESIS</strong>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <noscript><div style="position:fixed; inset:0; bg:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">O JavaScript é necessário para acessar o Vault.</div></noscript>
+    <noscript>
+        <div
+            style="position:fixed; inset:0; background:black; color:white; z-index:99999; display:flex; justify-content:center; align-items:center;">
+            O JavaScript é necessário para acessar o Vault.</div>
+    </noscript>
 
     <script>window.currentUser = null;</script>
     <script type="module" src="js/main.js"></script>
 
     <script>
-        window.onload = function() {
-            if(window.particlesJS) {
+        window.onload = function () {
+            if (window.particlesJS) {
                 particlesJS('particles-js', {
-                  "particles": { "number": { "value": 40, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#ffffff" }, "shape": { "type": "circle" }, "opacity": { "value": 0.1, "random": true }, "size": { "value": 2, "random": true }, "line_linked": { "enable": false }, "move": { "enable": true, "speed": 0.5, "direction": "none", "random": true, "out_mode": "out" } },
-                  "interactivity": { "detect_on": "canvas", "events": { "onhover": { "enable": false }, "onclick": { "enable": false } } }, "retina_detect": true
+                    "particles": { "number": { "value": 40, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#ffffff" }, "shape": { "type": "circle" }, "opacity": { "value": 0.1, "random": true }, "size": { "value": 2, "random": true }, "line_linked": { "enable": false }, "move": { "enable": true, "speed": 0.5, "direction": "none", "random": true, "out_mode": "out" } },
+                    "interactivity": { "detect_on": "canvas", "events": { "onhover": { "enable": false }, "onclick": { "enable": false } } }, "retina_detect": true
                 });
             }
         };
     </script>
+    <!-- BLOCKCHAIN EXPLORER MODAL -->
+    <div id="explorerModal" class="modal hidden">
+        <div class="modal-content glass-panel explorer-panel">
+            <span class="close-modal" id="closeExplorer">&times;</span>
+            <h2 class="section-title">
+                <span><i class="fa-solid fa-link"></i> GAMEVAULT LEDGER</span>
+            </h2>
+            <div class="explorer-stats">
+                <div class="exp-stat"><small>TOTAL BLOCKS</small><span id="expTotalBlocks">0</span></div>
+                <div class="exp-stat"><small>NET WORTH</small><span id="expNetWorth">R$ 0</span></div>
+                <div class="exp-stat"><small>GENESIS DATE</small><span id="expGenesis">--</span></div>
+            </div>
+            <div class="explorer-timeline" id="explorerTimeline">
+                <!-- Blocks will be injected here -->
+            </div>
+        </div>
+    </div>
 </body>
+
 </html>

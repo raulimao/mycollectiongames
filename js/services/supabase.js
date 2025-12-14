@@ -13,27 +13,26 @@ export const AuthService = {
         try {
             const redirectTo = `${window.location.origin}${window.location.pathname}`;
             console.log("🔐 [Auth] Iniciando OAuth para:", redirectTo);
-            
+
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { 
+                options: {
                     redirectTo: redirectTo,
-                    queryParams: { access_type: 'offline' } 
+                    queryParams: { access_type: 'offline' }
                 }
             });
-            
+
             if (error) throw error;
         } catch (error) {
             console.error("❌ [Auth Error]", error);
             alert("Erro ao iniciar login: " + error.message);
         }
     },
-    
+
     async signOut() {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
-        localStorage.clear();
-        sessionStorage.clear();
+        // localStorage.clear(); // Removed to preserve Blockchain
         window.location.reload();
     }
 };

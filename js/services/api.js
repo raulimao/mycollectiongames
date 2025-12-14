@@ -1,10 +1,10 @@
 import { supabase } from './supabase.js';
 
-const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6'; 
+const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6';
 
 // --- CACHE & UTILS ---
 const CacheService = {
-    set(key, data, ttlMinutes = 1440) { 
+    set(key, data, ttlMinutes = 1440) {
         const now = new Date();
         const item = { value: data, expiry: now.getTime() + (ttlMinutes * 60 * 1000) };
         localStorage.setItem(key, JSON.stringify(item));
@@ -16,7 +16,7 @@ const CacheService = {
             const item = JSON.parse(itemStr);
             if (new Date().getTime() > item.expiry) { localStorage.removeItem(key); return null; }
             return item.value;
-        } catch(e) { return null; }
+        } catch (e) { return null; }
     }
 };
 
@@ -26,10 +26,10 @@ const fetchTranslationChunk = async (chunk) => {
     try {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=en|pt-br`);
         const data = await res.json();
-        
+
         // Verifica se a API devolveu sucesso e não um erro disfarçado
-        if (data.responseStatus === 200 && 
-            data.responseData.translatedText && 
+        if (data.responseStatus === 200 &&
+            data.responseData.translatedText &&
             !data.responseData.translatedText.includes("QUERY LENGTH LIMIT")) {
             return data.responseData.translatedText;
         }
@@ -41,9 +41,9 @@ const fetchTranslationChunk = async (chunk) => {
 
 const translateText = async (text) => {
     if (!text) return "Sem descrição disponível.";
-    
+
     // Limpa tags HTML para economizar caracteres e evitar quebra de layout
-    const cleanText = text.replace(/<[^>]*>/g, ''); 
+    const cleanText = text.replace(/<[^>]*>/g, '');
 
     // Se for curto, traduz direto (rápido)
     if (cleanText.length <= 450) {
@@ -54,7 +54,7 @@ const translateText = async (text) => {
     // 1. Quebra o texto em frases baseadas em pontuação (. ! ?), mantendo a pontuação.
     // O regex olha para .!? seguidos de espaço ou fim de linha.
     const sentences = cleanText.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [cleanText];
-    
+
     const chunks = [];
     let currentChunk = "";
 
@@ -112,13 +112,21 @@ export const GameService = {
         return data ? data.id : null;
     },
 
-    async fetchGames(userId) {
-        const { data, error } = await supabase.from('games').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    // DEPRECATED: Server-Side Pagination
+    // async fetchGames(userId, page = 0, limit = 50) { ... }
+    // async fetchSharedGames(userId) { ... }
+
+    async fetchStatsOnly(userId) {
+        // Query otimizada: Traz dados suficientes para KPI, Gráficos E Renderização da Grid (Busca Global)
+        // Evita trazer campos pesados que não usamos na listagem, mas garante Tags e Imagens.
+        const { data, error } = await supabase
+            .from('games')
+            .select('id, status, platform, price_paid, price_sold, created_at, title, image_url, tags')
+            .eq('user_id', userId);
+
         if (error) throw error;
         return data || [];
     },
-    
-    async fetchSharedGames(userId) { return this.fetchGames(userId); },
 
     async addGame(gameData) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -129,18 +137,46 @@ export const GameService = {
     },
 
     async updateGame(id, gameData) { await supabase.from('games').update(gameData).eq('id', id); },
-    async deleteGame(id) { await supabase.from('games').delete().eq('id', id); },
+
+    async checkDuplicate(userId, title, platform) {
+        const { data } = await supabase.from('games')
+            .select('id')
+            .eq('user_id', userId)
+            .ilike('title', title) // ilike for case-insensitive
+            .eq('platform', platform)
+            .maybeSingle();
+        return !!data;
+    },
+
+    async deleteGame(id) {
+        // 1. Fetch game details to identify feed items
+        const { data: game } = await supabase.from('games').select('user_id, title, platform').eq('id', id).maybeSingle();
+
+        // 2. Delete the game
+        const { error } = await supabase.from('games').delete().eq('id', id);
+        if (error) throw error;
+
+        // 3. Cascade delete to social_feed (best effort match)
+        if (game) {
+            // Remove feed items matching this game's signature
+            await supabase.from('social_feed')
+                .delete()
+                .eq('user_id', game.user_id)
+                .eq('game_title', game.title)
+                .eq('platform', game.platform);
+        }
+    },
 
     async searchRawg(query) {
         if (!query || query.length < 3) return [];
         const cacheKey = `search_${query.toLowerCase()}`;
         const cached = CacheService.get(cacheKey);
-        if(cached) return cached;
+        if (cached) return cached;
 
         try {
             const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`);
             const data = await res.json();
-            CacheService.set(cacheKey, data.results, 60); 
+            CacheService.set(cacheKey, data.results, 60);
             return data.results || [];
         } catch (e) { return []; }
     },
@@ -148,7 +184,7 @@ export const GameService = {
     async getGameDetails(gameName) {
         if (!gameName) return null;
         // ATENÇÃO: Mudei a versão do cache para v16 para forçar o recarregamento das descrições cortadas
-        const cacheKey = `details_v16_${gameName.toLowerCase().replace(/\s/g, '')}`; 
+        const cacheKey = `details_v16_${gameName.toLowerCase().replace(/\s/g, '')}`;
         const cachedData = CacheService.get(cacheKey);
         if (cachedData) return cachedData;
 
@@ -156,7 +192,7 @@ export const GameService = {
             const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(gameName)}&page_size=1`);
             const data = await res.json();
             if (!data.results || data.results.length === 0) return null;
-            
+
             const gameBasic = data.results[0];
             const [resDetails, resMovies] = await Promise.all([
                 fetch(`https://api.rawg.io/api/games/${gameBasic.id}?key=${RAWG_API_KEY}`),
@@ -167,17 +203,17 @@ export const GameService = {
             const moviesData = await resMovies.json();
 
             const descRaw = fullData.description_raw || fullData.description || "Sem descrição.";
-            
+
             // Aqui acontece a mágica da tradução completa
             const translatedDesc = await translateText(descRaw);
-            
+
             const finalData = {
                 ...fullData,
-                description_ptbr: translatedDesc, 
-                trailers: moviesData.results || [] 
+                description_ptbr: translatedDesc,
+                trailers: moviesData.results || []
             };
 
-            CacheService.set(cacheKey, finalData, 1440); 
+            CacheService.set(cacheKey, finalData, 1440);
             return finalData;
         } catch (e) { return null; }
     }
@@ -203,7 +239,7 @@ export const SocialService = {
             return 'removed';
         } else {
             const { error } = await supabase.from('social_likes').insert([{ user_id: userId, feed_id: feedId }]);
-            if(error) throw error;
+            if (error) throw error;
             const { data: feedItem } = await supabase.from('social_feed').select('user_id').eq('id', feedId).maybeSingle();
             if (feedItem && feedItem.user_id !== userId) {
                 await supabase.from('notifications').insert({ user_id: feedItem.user_id, actor_id: userId, action_type: 'LIKE', related_id: feedId });
@@ -217,12 +253,12 @@ export const SocialService = {
         const { data } = await supabase.from('social_follows').select('*').eq('follower_id', currentUserId).eq('following_id', targetUserId).maybeSingle();
         if (data) {
             await supabase.from('social_follows').delete().eq('follower_id', currentUserId).eq('following_id', targetUserId);
-            return false; 
+            return false;
         } else {
             const { error } = await supabase.from('social_follows').insert([{ follower_id: currentUserId, following_id: targetUserId }]);
-            if(error) throw error;
+            if (error) throw error;
             await supabase.from('notifications').insert({ user_id: targetUserId, actor_id: currentUserId, action_type: 'FOLLOW' });
-            return true; 
+            return true;
         }
     },
 
@@ -233,16 +269,16 @@ export const SocialService = {
     },
 
     async getUserFollowingIds(userId) {
-        if(!userId) return [];
+        if (!userId) return [];
         const { data } = await supabase.from('social_follows').select('following_id').eq('follower_id', userId);
         return data ? data.map(r => r.following_id) : [];
     },
 
     async getNetwork(userId, type) {
-        const column = type === 'followers' ? 'following_id' : 'follower_id'; 
-        const targetColumn = type === 'followers' ? 'follower_id' : 'following_id'; 
+        const column = type === 'followers' ? 'following_id' : 'follower_id';
+        const targetColumn = type === 'followers' ? 'follower_id' : 'following_id';
         const { data: relations } = await supabase.from('social_follows').select(targetColumn).eq(column, userId);
-        if(!relations || relations.length === 0) return [];
+        if (!relations || relations.length === 0) return [];
         const ids = relations.map(r => r[targetColumn]);
         const { data: profiles } = await supabase.from('profiles').select('*').in('id', ids);
         return profiles || [];
@@ -250,21 +286,50 @@ export const SocialService = {
 
     async getProfileStats(userId) {
         const { data, error } = await supabase.from('profile_stats').select('*').eq('user_id', userId).maybeSingle();
-        if(error || !data) return { followers_count: 0, following_count: 0, games_count: 0 };
+        if (error || !data) return { followers_count: 0, following_count: 0, games_count: 0 };
         return data;
     },
 
     async getNotifications(userId) {
         const { data, error } = await supabase.from('notifications').select(`*, actor:profiles!actor_id(nickname)`).eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
-        if(error) console.error("Erro busca notificações:", error);
+        if (error) console.error("Erro busca notificações:", error);
         return data || [];
     },
 
     async markNotificationRead(notifId) {
         await supabase.from('notifications').update({ read: true }).eq('id', notifId);
     },
-    
+
     async markAllNotificationsRead(userId) {
         await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+    },
+
+    async cleanupOrphanedFeed(userId) {
+        // 1. Get all User's Games (Source of Truth)
+        const { data: games } = await supabase.from('games').select('title, platform').eq('user_id', userId);
+        const userGames = games || [];
+
+        // 2. Get all User's Feed Items
+        const { data: feedItems } = await supabase.from('social_feed').select('id, game_title, platform').eq('user_id', userId);
+        const userFeed = feedItems || [];
+
+        // 3. Find Orphans (Feed items with no matching Game)
+        // Match criteria: Exact Title AND Platform
+        const orphans = userFeed.filter(feedItem => {
+            const hasMatch = userGames.some(game =>
+                game.title === feedItem.game_title &&
+                game.platform === feedItem.platform
+            );
+            return !hasMatch;
+        });
+
+        if (orphans.length === 0) return 0;
+
+        // 4. Delete Orphans
+        const orphanIds = orphans.map(o => o.id);
+        const { error } = await supabase.from('social_feed').delete().in('id', orphanIds);
+
+        if (error) throw error;
+        return orphanIds.length;
     }
 };
