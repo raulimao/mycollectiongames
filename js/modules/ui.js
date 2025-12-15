@@ -223,7 +223,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
         console.log('🎨 Rendering visitor header - blockchain data:', state.visitedBlockchainData, 'count:', blockCount);
 
         // Calculate XP for visited user (SAME FORMULA as renderXP)
-        const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
+        const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
         const visitorStats = state.allGamesStats || [];
         let visitorXP = 0;
         visitorStats.forEach(g => visitorXP += (XP_TABLE[g.status] || 0));
@@ -612,7 +612,7 @@ const renderFeed = (feedItems, userLikes = []) => {
 const renderXP = (allGames) => {
     const DOM = getDOM();
     if (!DOM.xpContainer || !DOM.xpBar) return;
-    const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
+    const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
     let totalXP = 0;
     allGames.forEach(g => totalXP += (XP_TABLE[g.status] || 0));
     const XP_PER_LEVEL = 2000;
@@ -1266,7 +1266,7 @@ export const generateSocialCard = async () => {
         }
 
         // Level (SAME FORMULA as renderXP)
-        const XP_TABLE = { 'Platinado': 1000, 'Jogo Zerado': 500, 'Jogando': 100, 'Coleção': 50, 'Backlog': 10, 'Vendido': 20, 'À venda': 20, 'Desejado': 0 };
+        const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
         let cardTotalXP = 0;
         source.forEach(g => cardTotalXP += (XP_TABLE[g.status] || 0));
         const XP_PER_LEVEL = 2000;
