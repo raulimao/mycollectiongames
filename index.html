@@ -20,8 +20,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -31,7 +30,7 @@
 <body>
 
     <div id="dynamic-bg-layer"></div>
-    <div id="particles-js"></div>
+
 
     <div id="globalLoader" class="login-overlay">
         <div class="spinner"></div>
@@ -115,10 +114,7 @@
             </div>
             <div class="toolbar-actions">
                 <div class="tools-wrapper">
-                    <button id="btnRoulette" class="btn-primary btn-icon btn-pulse" title="Escolher jogo aleatório"
-                        aria-label="Escolher jogo aleatório">
-                        <i class="fa-solid fa-dice fa-lg"></i>
-                    </button>
+
 
 
                     <button id="btnExport" class="btn-primary btn-icon" title="Backup de Dados (JSON)"
@@ -135,6 +131,12 @@
                     <button id="btnCompare" class="btn-primary btn-icon" title="Comparar Coleção com Amigo"
                         aria-label="Comparar Coleções" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);">
                         <i class="fa-solid fa-code-compare"></i>
+                    </button>
+                    <!-- Deal Hunter -->
+                    <button id="btnDealHunter" class="btn-primary btn-icon" onclick="runDealHunter()"
+                        title="Buscar Ofertas (Baseado na Wishlist)"
+                        style="background: linear-gradient(135deg, #f6e05e, #d69e2e);">
+                        <i class="fa-solid fa-tags"></i>
                     </button>
                 </div>
 
@@ -347,7 +349,7 @@
                 <div
                     style="position: absolute; inset: 0; background: linear-gradient(to top, #141416 0%, transparent 100%);">
                 </div>
-                <button onclick="document.getElementById('gameDetailModal').classList.add('hidden')" class="close-btn"
+                <button onclick="window.closeGameDetailModal()" class="close-btn"
                     style="position: absolute; top: 15px; right: 20px; z-index: 10;">&times;</button>
                 <div style="position: absolute; bottom: 20px; left: 30px;">
                     <div id="detailMetacritic" class="badge bg-plat"
@@ -397,14 +399,7 @@
         </div>
     </div>
 
-    <div id="rouletteModal" class="modal-overlay hidden" style="z-index: 5000;">
-        <div class="modal-content glass-panel center-content">
-            <h2 class="modal-title-center" style="color:var(--secondary)">O ESCOLHIDO</h2>
-            <div id="rouletteDisplay" class="roulette-container"></div>
-            <button class="btn-primary" onclick="document.getElementById('rouletteModal').classList.add('hidden')"
-                style="margin-top: 20px;">ACEITAR DESTINO</button>
-        </div>
-    </div>
+
 
     <div id="nicknameModal" class="modal-overlay hidden" style="z-index: 10000;">
         <div class="modal-content glass-panel center-content" style="max-width: 400px;">
@@ -556,7 +551,7 @@
 
     <!-- IMPORT MODAL -->
     <div id="importModal" class="modal-overlay hidden" style="z-index: 6600;">
-        <div class="modal-content glass-panel" style="max-width: 500px;">
+        <div class="modal-content glass-panel" style="max-width: 500px; max-height: 85vh; overflow-y: auto;">
             <div class="modal-header">
                 <h2><i class="fa-solid fa-cloud-arrow-down"></i> IMPORTAR JOGOS</h2>
                 <button onclick="document.getElementById('importModal').classList.add('hidden')"
@@ -565,7 +560,7 @@
 
             <div style="padding: 20px;">
                 <!-- Platform Selector -->
-                <div class="input-group" style="margin-bottom: 25px;">
+                <div class="input-group" style="margin-bottom: 20px;">
                     <label>Plataforma</label>
                     <select id="importPlatform" class="styled-select">
                         <option value="steam">Steam (Web API)</option>
@@ -578,28 +573,23 @@
                 <!-- Steam Configuration -->
                 <div id="steamConfig">
                     <div
-                        style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                        <h4 style="color: var(--warning); margin: 0 0 10px 0; font-size: 0.9rem;">
+                        style="background: rgba(255,193,7,0.05); border: 1px solid rgba(255,193,7,0.2); border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+                        <h4 style="color: var(--warning); margin: 0 0 8px 0; font-size: 0.85rem;">
                             <i class="fa-solid fa-key"></i> Configuração Necessária
                         </h4>
-                        <p style="color: #ccc; font-size: 0.85rem; margin: 0 0 10px 0;">
-                            1. Obtenha sua <strong>Steam API Key</strong>:
-                        </p>
-                        <a href="https://steamcommunity.com/dev/apikey" target="_blank"
-                            style="display: inline-block; background: linear-gradient(135deg, #00d4ff, #0ea5e9); color: #000; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 0.85rem; margin-bottom: 12px;">
-                            <i class="fa-solid fa-key"></i> Obter Steam API Key <i
-                                class="fa-solid fa-external-link-alt fa-xs"></i>
-                        </a>
-                        <p style="color: #ccc; font-size: 0.85rem; margin: 0;">
-                            2. Cole a <strong>URL do seu perfil Steam</strong> no campo abaixo e clique em "Detectar"
-                        </p>
+                        <div style="font-size: 0.8rem; color: #aaa;">
+                            <p style="margin: 0 0 5px 0;">1. Pegue sua API Key:</p>
+                            <a href="https://steamcommunity.com/dev/apikey" target="_blank"
+                                style="color: #0ea5e9; text-decoration: underline;">
+                                Obter Steam API Key <i class="fa-solid fa-external-link-alt fa-xs"></i>
+                            </a>
+                            <p style="margin: 8px 0 0 0;">2. Cole a URL do perfil e ID abaixo.</p>
+                        </div>
                     </div>
 
                     <div class="input-group">
-                        <label for="steamApiKey">
+                        <label for="steamApiKey" style="font-size: 0.85rem;">
                             <i class="fa-solid fa-key"></i> Steam API Key
-                            <i class="fa-solid fa-circle-question" style="color: #666; font-size: 0.8rem; cursor: help;"
-                                title="Cole sua Steam Web API Key. Formato: 32 caracteres hexadecimais"></i>
                         </label>
                         <div style="position: relative;">
                             <input type="password" id="steamApiKey" placeholder="Cole sua API Key aqui..."
@@ -684,9 +674,12 @@
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="modal-actions">
+                <div class="modal-actions" style="display:flex; flex-direction:column; gap:10px;">
                     <button id="btnStartImport" class="btn-primary" style="width: 100%;">
                         <i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA
+                    </button>
+                    <button onclick="window.handleResetSteam()" class="btn-danger" style="width: 100%;">
+                        <i class="fa-solid fa-trash"></i> REMOVER JOGOS STEAM
                     </button>
                 </div>
             </div>
@@ -696,100 +689,7 @@
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- NFT SOCIAL CARD HIDDEN -->
-    <div style="position:fixed; left:-9999px; top:0;">
-        <div id="socialCardHidden" class="nft-card">
-            <!-- Holographic Overlay -->
-            <div class="nft-holo"></div>
-            <!-- Vertical Hash (Code Rain) -->
-            <div class="nft-side-hash" id="scHash"></div>
 
-            <!-- Header -->
-            <div class="nft-header">
-                <div class="nft-header-left">
-                    <div class="nft-brand">
-                        <i class="fa-solid fa-gamepad"></i> GAME<span>VAULT</span>
-                    </div>
-                </div>
-                <div class="nft-header-right">
-                    <!-- Rarity Badge Injected Here -->
-                </div>
-            </div>
-
-            <div class="nft-sub-header">
-                <div class="wallet-badge-card">
-                    <i class="fa-solid fa-gamepad"></i> <span id="scBlockCount">0</span> JOGOS
-                </div>
-                <div class="nft-badge">LEGACY PASS</div>
-            </div>
-            <!-- Main Visual / Avatar -->
-            <div class="nft-visual">
-                <div class="nft-ring"></div>
-                <img id="scAvatar" src="" crossorigin="anonymous">
-                <div class="nft-level-tag" id="scLevel">LVL 1</div>
-            </div>
-
-            <!-- Identity -->
-            <div class="nft-identity">
-                <h2 id="scName">PLAYER ONE</h2>
-                <!-- Removed Hash Row -->
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="nft-stats">
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">INVESTIMENTO LÍQ.</span>
-                    <strong class="nft-stat-value gold" id="scValue">R$ 0</strong>
-                </div>
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">JOGOS NA BASE</span>
-                    <strong class="nft-stat-value" id="scGames">0</strong>
-                </div>
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">MVP (MAIOR VALOR)</span>
-                    <strong class="nft-stat-value danger" id="scMVP" title="Jogo mais caro da coleção">N/A</strong>
-                </div>
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">PLATAFORMA</span>
-                    <strong class="nft-stat-value accent" id="scTopPlatform">PC</strong>
-                </div>
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">CONCLUSÃO</span>
-                    <strong class="nft-stat-value success" id="scCompletion">0%</strong>
-                </div>
-                <div class="nft-stat-item">
-                    <span class="nft-stat-label">JOGOS ZERADOS</span>
-                    <strong class="nft-stat-value info" id="scZerados">0</strong>
-                </div>
-                <div class="nft-stat-item split-row">
-                    <div class="stat-col">
-                        <span class="nft-stat-label">VENDIDOS</span>
-                        <strong class="nft-stat-value" id="scSold">0</strong>
-                    </div>
-                    <div class="stat-v-sep"></div>
-                    <div class="stat-col">
-                        <span class="nft-stat-label">LUCRO</span>
-                        <strong class="nft-stat-value success" id="scProfit">R$ 0</strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Footer / Verification -->
-            <div class="nft-footer">
-                <div class="nft-qr">
-                    <!-- CSS Generated QR Pattern -->
-                    <div class="qr-pattern"></div>
-                </div>
-                <div class="nft-meta">
-                    <div class="nft-meta-row">
-                        <span>MINTED</span> <strong id="scDate">2024-01-01</strong>
-                    </div>
-                    <div class="nft-meta-row">
-                        <span>EDITION</span> <strong>GENESIS</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <noscript>
         <div

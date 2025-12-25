@@ -94,113 +94,115 @@ export class SteamImporter {
     }
 
     /**
-     * Import all owned games to GameVault
+     * Fetch Steam games and check for duplicates (Preview Mode)
      * @param {string} userId - Current user ID
-     * @param {Function} progressCallback - Optional progress callback
-     * @returns {Promise<Object>} Import results
+     * @returns {Promise<Object>} Results with games tagged as isDuplicate
      */
-    async importGames(userId, progressCallback = null) {
+    async getPreviewData(userId) {
         try {
-            // Fetch Steam library
+            // 1. Fetch Steam library
             const steamGames = await this.getOwnedGames();
 
-            if (progressCallback) {
-                progressCallback({ stage: 'fetched', total: steamGames.length });
-            }
-
-            // Transform all games WITH METACRITIC (batched to avoid rate limits)
-            const transformedGames = [];
-            for (let i = 0; i < steamGames.length; i++) {
-                if (progressCallback) {
-                    progressCallback({
-                        stage: 'enriching',
-                        current: i + 1,
-                        total: steamGames.length
-                    });
-                }
-
-                const transformed = await this.transformToGameVaultFormat(steamGames[i]);
-                transformedGames.push(transformed);
-
-                // Small delay to respect RAWG API rate limits (5 requests per second)
-                if (i % 5 === 0 && i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
-
-            // Check for duplicates
+            // 2. Get existing games to check duplicates
             const existingGames = await GameService.fetchStatsOnly(userId);
             const existingTitles = new Set(
                 existingGames
-                    .filter(g => g.platform === 'PC')
-                    .map(g => g.title.toLowerCase())
+                    .filter(g => g.platform === 'PC' || g.platform === 'Steam')
+                    .map(g => g.title.toLowerCase().trim())
             );
 
-            // Filter out duplicates
-            const newGames = transformedGames.filter(game =>
-                !existingTitles.has(game.title.toLowerCase())
-            );
+            // 3. Map to simple preview format
+            const previewGames = steamGames.map(g => {
+                const isDup = existingTitles.has(g.name.toLowerCase().trim());
+                return {
+                    steamAppId: g.appid,
+                    title: g.name,
+                    image_url: this.getGameImage(g.appid),
+                    header_url: this.getGameHeaderImage(g.appid),
+                    playtime_minutes: g.playtime_forever,
+                    isDuplicate: isDup
+                };
+            });
 
-            const duplicateCount = transformedGames.length - newGames.length;
-
-            if (progressCallback) {
-                progressCallback({
-                    stage: 'filtered',
-                    total: transformedGames.length,
-                    newGames: newGames.length,
-                    duplicates: duplicateCount
-                });
-            }
-
-            // Batch import new games
-            if (newGames.length > 0) {
-                await GameService.batchAddGames(newGames);
-            }
-
-            if (progressCallback) {
-                progressCallback({ stage: 'complete', imported: newGames.length });
-            }
-
-            return {
-                success: true,
-                totalFound: steamGames.length,
-                imported: newGames.length,
-                duplicates: duplicateCount,
-                games: newGames
-            };
+            // Sort: New items first, then by playtime desc
+            return previewGames.sort((a, b) => {
+                if (a.isDuplicate === b.isDuplicate) return b.playtime_minutes - a.playtime_minutes;
+                return a.isDuplicate ? 1 : -1;
+            });
 
         } catch (error) {
-            console.error('Import error:', error);
+            console.error('Preview error:', error);
             throw error;
         }
+    }
+
+    /**
+     * Import a specific list of games (after user selection)
+     * @param {Array} gamesToImport - List of game objects from preview
+     * @param {string} userId
+     * @param {Function} progressCallback 
+     */
+    async importSelected(gamesToImport, userId, progressCallback) {
+        const total = gamesToImport.length;
+        const batchSize = 5; // Process in small batches
+        const allNewGames = [];
+
+        for (let i = 0; i < total; i++) {
+            const game = gamesToImport[i];
+
+            if (progressCallback) progressCallback({ stage: 'enriching', current: i + 1, total, game: game.title });
+
+            // Enrich (Metacritic) - Fail safe
+            let metacritic = null;
+            try {
+                // Rate limit protection
+                if (i > 0 && i % 5 === 0) await new Promise(r => setTimeout(r, 1100));
+
+                // Only search RAWG if we really need logic, or skip to save time?
+                // Let's do it to keep quality high.
+                const rawgResults = await GameService.searchRawg(game.title);
+                if (rawgResults && rawgResults.length > 0) {
+                    metacritic = rawgResults[0].metacritic || null;
+                }
+            } catch (e) { console.warn("RAWG enrich failed for", game.title); }
+
+            allNewGames.push({
+                title: game.title,
+                platform: 'PC',
+                status: 'Coleção',
+                price_paid: 0,
+                price_sold: 0,
+                image_url: game.header_url || game.image_url,
+                tags: ['Digital', 'Steam'],
+                metacritic: metacritic,
+                user_id: userId
+            });
+        }
+
+        if (allNewGames.length > 0) {
+            if (progressCallback) progressCallback({ stage: 'saving', total: allNewGames.length });
+            await GameService.batchAddGames(allNewGames);
+        }
+
+        return allNewGames.length;
     }
 }
 
 /**
  * Main Import Service
- * Orchestrates imports from different platforms
  */
 export const ImportService = {
-    /**
-     * Import games from Steam
-     * @param {string} steamId - Steam ID (64-bit)
-     * @param {string} apiKey - Steam Web API Key
-     * @param {Function} progressCallback - Progress callback
-     * @returns {Promise<Object>} Import results
-     */
-    async importFromSteam(steamId, apiKey, progressCallback = null) {
+    async getSteamPreview(steamId, apiKey) {
         const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
-            throw new Error('Usuário não autenticado');
-        }
-
+        if (!user) throw new Error('Usuário não autenticado');
         const importer = new SteamImporter(apiKey, steamId);
-        return await importer.importGames(user.id, progressCallback);
+        return await importer.getPreviewData(user.id);
     },
 
-    // Future platform integrations
-    // async importFromGOG() { ... }
-    // async importFromEpic() { ... }
-    // async importFromAmazon() { ... }
+    async confirmSteamImport(selectedGames, apiKey, steamId, progressCallback) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Usuário não autenticado');
+        const importer = new SteamImporter(apiKey, steamId);
+        return await importer.importSelected(selectedGames, user.id, progressCallback);
+    }
 };

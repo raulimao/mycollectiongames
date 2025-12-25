@@ -1,8 +1,8 @@
 import { supabase, AuthService } from './services/supabase.js';
-import { GameService, SocialService } from './services/api.js';
+import { GameService, SocialService, PriceService } from './services/api.js';
 import { ImportService } from './services/importer.js';
 import { appStore } from './modules/store.js';
-import { renderApp, showToast, toggleModal, setupRoulette, exportData, generateSocialCard, renderUserList } from './modules/ui.js';
+import { renderApp, showToast, toggleModal, exportData, renderUserList } from './modules/ui.js';
 import { initMobileTouchHandlers, handleOrientationChange, initNetworkDetection } from './modules/mobile.js';
 
 let editingId = null;
@@ -421,10 +421,19 @@ const setupGlobalEvents = () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             const modals = [
-                'gameDetailModal', 'gameModal', 'rouletteModal', 'nicknameModal',
+                'gameModal', 'rouletteModal', 'nicknameModal',
                 'networkModal', 'profileEditModal', 'importModal', 'compareModal'
             ];
             let closedAny = false;
+
+            // Special handling for GameDetail to stop video
+            const detailModal = document.getElementById('gameDetailModal');
+            if (detailModal && !detailModal.classList.contains('hidden')) {
+                if (window.closeGameDetailModal) window.closeGameDetailModal();
+                else detailModal.classList.add('hidden');
+                closedAny = true;
+            }
+
             modals.forEach(id => {
                 const el = document.getElementById(id);
                 if (el && !el.classList.contains('hidden')) {
@@ -432,6 +441,7 @@ const setupGlobalEvents = () => {
                     closedAny = true;
                 }
             });
+
             // Também fecha o painel de notificação se estiver aberto
             const { isNotificationsOpen } = appStore.get();
             if (!closedAny && isNotificationsOpen) {
@@ -467,7 +477,7 @@ const setupGlobalEvents = () => {
 
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.addEventListener('input', (e) => appStore.setState({ searchTerm: e.target.value }));
-    setupRoulette();
+
     setupAdvancedFilters();
 };
 
@@ -690,9 +700,22 @@ const setupAuthEvents = () => {
     const inputStatus = document.getElementById('inputStatus');
     if (inputStatus) {
         inputStatus.onchange = (e) => {
+            const val = e.target.value;
             const soldGroup = document.getElementById('soldGroup');
-            if (['Vendido', 'À venda'].includes(e.target.value)) soldGroup.classList.remove('hidden');
+            const priceLabel = document.querySelector('label[for="inputPrice"]');
+
+            // Toggle Sold Inputs
+            if (['Vendido', 'À venda'].includes(val)) soldGroup.classList.remove('hidden');
             else soldGroup.classList.add('hidden');
+
+            // Toggle Price Label (Cost vs Target)
+            if (val === 'Desejado') {
+                priceLabel.innerHTML = '<i class="fa-solid fa-crosshairs"></i> Preço Alvo (R$)';
+                priceLabel.classList.add('text-warning');
+            } else {
+                priceLabel.innerHTML = 'Preço Pago (R$)';
+                priceLabel.classList.remove('text-warning');
+            }
         };
     }
 };
@@ -750,6 +773,16 @@ const openGameModal = (gameId = null) => {
                 document.getElementById('inputTags').value = JSON.stringify(game.tags);
             }
             if (['Vendido', 'À venda'].includes(game.status)) document.getElementById('soldGroup').classList.remove('hidden');
+
+            // Trigger label update based on status
+            const priceLabel = document.querySelector('label[for="inputPrice"]');
+            if (game.status === 'Desejado') {
+                priceLabel.innerHTML = '<i class="fa-solid fa-crosshairs"></i> Preço Alvo (R$)';
+                priceLabel.classList.add('text-warning');
+            } else {
+                priceLabel.innerHTML = 'Preço Pago (R$)';
+                priceLabel.classList.remove('text-warning');
+            }
         }
     } else {
         document.getElementById('modalTitle').innerText = "NOVO JOGO";
@@ -830,6 +863,70 @@ const handleDelete = async () => {
         toggleModal(false);
         const { user } = appStore.get(); if (user) loadData(user.id);
         showToast("Excluído.");
+    }
+};
+
+// --- DEAL HUNTER ENGINE ---
+window.runDealHunter = async () => {
+    const { allGamesStats } = appStore.get();
+    if (!allGamesStats) return;
+
+    // Filter Wishlist items
+    const wishlist = allGamesStats.filter(g => g.status === 'Desejado');
+    if (wishlist.length === 0) {
+        showToast("Sua Wishlist está vazia.", "info");
+        return;
+    }
+
+    const btn = document.getElementById('btnDealHunter');
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 0%';
+        btn.disabled = true;
+    }
+
+    showToast(`Iniciando busca para ${wishlist.length} jogos...`, "info");
+
+    let dealsFound = 0;
+
+    // Process sequentially with delay to respect API Rate Limits (CheapShark is sensitive)
+    for (let i = 0; i < wishlist.length; i++) {
+        const game = wishlist[i];
+
+        // Update UI Progress
+        const percent = Math.floor(((i + 1) / wishlist.length) * 100);
+        if (btn) btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> ${percent}%`;
+
+        try {
+            const deal = await PriceService.getLowestPrice(game.title);
+
+            if (deal) {
+                // If Target (price_paid) is 0 or null, we assume any deal is interesting, 
+                // OR we could require a target. Let's assume target is required for "DEAL" badge.
+                const target = game.price_paid || 0;
+
+                // Logic: If price < target OR (no target & savings > 50%)
+                if ((target > 0 && deal.price < target) || (target === 0 && deal.savings >= 50)) {
+                    dealsFound++;
+                    game.latest_deal = deal;
+                }
+            }
+        } catch (e) {
+            console.warn(`Erro ao buscar oferta para ${game.title}`, e);
+        }
+
+        // DELAY: 1.2 seconds between requests to avoid 429 Errors
+        await new Promise(r => setTimeout(r, 1200));
+    }
+
+    // Force Reactivity
+    appStore.setState({ allGamesStats: [...allGamesStats] });
+
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-tags"></i> Buscar Ofertas'; btn.disabled = false; }
+
+    if (dealsFound > 0) {
+        showToast(`Sucesso! ${dealsFound} ofertas encontradas.`, "success");
+    } else {
+        showToast("Busca finalizada. Nenhuma oferta nova.", "info");
     }
 };
 
@@ -1084,64 +1181,218 @@ const handleImportSubmit = async () => {
     await handleSteamImport();
 };
 
+
+// --- IMPORT LOGIC ---
+let currentImportCandidates = [];
+
+// Helpers accessible by HTML
+window.updateImportCount = () => {
+    const checked = document.querySelectorAll('.import-checkbox:checked').length;
+    const btn = document.getElementById('btnStartImport');
+    if (btn) btn.innerHTML = `<i class="fa-solid fa-check"></i> CONFIRMAR IMPORTAÇÃO (${checked})`;
+};
+
+window.selectAllImport = (source) => {
+    document.querySelectorAll('.import-checkbox').forEach(cb => cb.checked = source.checked);
+    window.updateImportCount();
+};
+
 const handleSteamImport = async () => {
     const apiKey = document.getElementById('steamApiKey').value.trim();
     const steamId = document.getElementById('steamId').value.trim();
     const rememberKey = document.getElementById('rememberApiKey')?.checked;
 
     // Validation
-    if (!apiKey) {
-        showToast("Insira sua Steam API Key", "error");
-        return;
-    }
-
-    if (!steamId || !/^[0-9]{17}$/.test(steamId)) {
-        showToast("Steam ID inválido (deve ter 17 dígitos)", "error");
-        return;
-    }
+    if (!apiKey) { showToast("Insira sua Steam API Key", "error"); return; }
+    if (!steamId || !/^[0-9]{17}$/.test(steamId)) { showToast("Steam ID inválido", "error"); return; }
 
     const btn = document.getElementById('btnStartImport');
     const progressDiv = document.getElementById('importProgress');
     const resultsDiv = document.getElementById('importResults');
     const progressText = document.getElementById('importProgressText');
+    const resultsText = document.getElementById('importResultsText');
 
-    // Show progress
-    btn.disabled = true;
-    progressDiv.classList.remove('hidden');
-    resultsDiv.classList.add('hidden');
+    // Check if we are in "Confirm" mode (button text changed)
+    const isConfirmMode = btn.getAttribute('data-mode') === 'confirm';
+
+    if (isConfirmMode) {
+        // --- PHASE 2: CONFIRM IMPORT ---
+        try {
+            // 1. READ SELECTION BEFORE CLEARING UI
+            const checkboxes = document.querySelectorAll('.import-checkbox:checked');
+            const selectedAppIds = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selectedAppIds.length === 0) {
+                showToast("Selecione pelo menos um jogo.", "warning");
+                return; // Return early, DO NOT reset UI
+            }
+
+            // 2. NOW WE CAN RESET UI FOR PROGRESS
+            btn.disabled = true;
+            progressDiv.classList.remove('hidden');
+            resultsDiv.classList.add('hidden');
+            // resultsText.innerHTML = ''; // Optional: keep list or clear. Let's clear to show progress.
+
+            const gamesToImport = currentImportCandidates.filter(g => selectedAppIds.includes(String(g.steamAppId)));
+
+            progressText.textContent = `Importando ${gamesToImport.length} jogos...`;
+
+            const count = await ImportService.confirmSteamImport(gamesToImport, apiKey, steamId, (p) => {
+                if (p.stage === 'enriching') progressText.textContent = `Enriquecendo dados (${p.current}/${p.total}): ${p.game}`;
+                if (p.stage === 'saving') progressText.textContent = `Salvando no cofre...`;
+            });
+
+            // Success
+            console.log(`[ImportSuccess] Import completed with count: ${count}`);
+            try {
+                showToast(`${count} jogos importados!`, "success");
+
+                // Close Import Modal Explicitly
+                document.getElementById('importModal').classList.add('hidden');
+
+                // Reset Internal Modal State
+                progressDiv.classList.add('hidden');
+                resultsDiv.classList.add('hidden');
+
+                const { user } = appStore.get();
+                if (user) await loadData(user.id); // Add await to ensure data loads
+            } catch (uiError) {
+                console.error("[ImportSuccess] UI Update Failed:", uiError);
+                showToast("Importação concluída, mas erro na interface. Recarregue a página.", "warning");
+            }
+
+            // Clean state
+            currentImportCandidates = [];
+            btn.removeAttribute('data-mode');
+            btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
+            btn.className = 'btn-primary';
+            btn.style.background = ''; // Clear overrides
+            btn.style.boxShadow = '';
+
+        } catch (error) {
+            console.error(error);
+            showToast("Erro na importação: " + error.message, "error");
+            // If error, restore UI so user can try again? 
+            // Ideally we should catch specific errors. For now, just hide progress.
+            progressDiv.classList.add('hidden');
+            resultsDiv.classList.remove('hidden'); // Show list again
+            btn.disabled = false;
+        }
+
+    } else {
+        // --- PHASE 1: FETCH PREVIEW ---
+        // UI Reset
+        btn.disabled = true;
+        progressDiv.classList.remove('hidden');
+        resultsDiv.classList.add('hidden');
+        resultsText.innerHTML = '';
+
+        try {
+            progressText.textContent = 'Conectando à Steam e verificando biblioteca...';
+
+            // Generate list
+            const games = await ImportService.getSteamPreview(steamId, apiKey);
+            currentImportCandidates = games;
+
+            if (games.length === 0) {
+                showToast("Nenhum jogo encontrado.", "info");
+                btn.disabled = false;
+                progressDiv.classList.add('hidden');
+                return;
+            }
+
+            // Save Credentials if requested
+            if (rememberKey) localStorage.setItem('steam_api_key', apiKey);
+            else localStorage.removeItem('steam_api_key');
+            localStorage.setItem('steam_id', steamId);
+
+            // Render Preview List
+            renderImportPreview(games, resultsText);
+
+            // Switch Button to Confirm Mode
+            resultsDiv.classList.remove('hidden');
+            progressDiv.classList.add('hidden');
+            btn.innerHTML = `<i class="fa-solid fa-check"></i> CONFIRMAR IMPORTAÇÃO (0)`;
+            btn.setAttribute('data-mode', 'confirm');
+
+            // FIX: Reuse btn-primary (shape/border) but override color to Green
+            btn.className = 'btn-primary';
+            btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            btn.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.3)';
+            btn.style.borderColor = 'transparent'; // Ensure no border issues
+            btn.disabled = false;
+
+        } catch (error) {
+            console.error(error);
+            showToast("Erro ao buscar: " + error.message, "error");
+            progressDiv.classList.add('hidden');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+};
+
+window.handleResetSteam = async () => {
+    if (!confirm("Isso apagará TODOS os jogos importados da Steam.\n\nTem certeza que deseja recomeçar?")) return;
 
     try {
-        progressText.textContent = 'Conectando à Steam API...';
+        const { user } = appStore.get();
+        if (!user) return;
 
-        const result = await ImportService.importFromSteam(steamId, apiKey, (progress) => {
-            if (progress.stage === 'fetched') {
-                progressText.textContent = `${progress.total} jogos encontrados na biblioteca...`;
-            } else if (progress.stage === 'enriching') {
-                progressText.textContent = `Buscando avaliações Metacritic (${progress.current}/${progress.total})...`;
-            } else if (progress.stage === 'filtered') {
-                progressText.textContent = `Verificando duplicatas (${progress.newGames} novos)...`;
-            }
-        });
+        showToast("Removendo jogos...", "info");
+        const count = await GameService.deleteByPlatform(user.id, 'Steam');
 
-        // Save to localStorage on success
-        if (rememberKey) {
-            localStorage.setItem('steam_api_key', apiKey);
-        } else {
-            localStorage.removeItem('steam_api_key');
+        showToast(`${count} jogos removidos.`, "success");
+        loadData(user.id);
+
+        // Reset button state
+        const btn = document.getElementById('btnStartImport');
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
+            btn.removeAttribute('data-mode');
+            btn.className = 'btn-primary';
+            // Clear manual overrides
+            btn.style.background = '';
+            btn.style.boxShadow = '';
         }
-        localStorage.setItem('steam_id', steamId);
-        localStorage.setItem('last_steam_import', JSON.stringify({
-            date: new Date().toISOString(),
-            count: result.imported
-        }));
+        document.getElementById('importResultsText').innerHTML = '';
+        document.getElementById('importResults').classList.add('hidden');
 
-        showImportResults(result, 'Steam');
 
-    } catch (error) {
-        handleImportError(error, 'Steam');
-    } finally {
-        btn.disabled = false;
+    } catch (e) {
+        console.error(e);
+        showToast("Erro ao remover: " + e.message, "error");
     }
+};
+
+const renderImportPreview = (games, container) => {
+    // Generate HTML
+    let html = `
+        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+             <label style="color:white; cursor:pointer;"><input type="checkbox" onchange="window.selectAllImport(this)"> Selecionar Tudo</label>
+             <span style="color:#888; font-size:0.8rem">${games.length} jogos encontrados</span>
+        </div>
+        <div class="import-list" style="max-height:300px; overflow-y:auto; border:1px solid #333; border-radius:8px; background:rgba(0,0,0,0.2);">`;
+
+    games.forEach(g => {
+        const isDup = g.isDuplicate;
+        html += `
+            <div style="display:flex; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); ${isDup ? 'opacity:0.5;' : ''}">
+                <input type="checkbox" class="import-checkbox" value="${g.steamAppId}" onchange="window.updateImportCount()" ${!isDup ? 'checked' : ''} style="margin-right:10px; width:16px; height:16px;">
+                <img src="${g.image_url}" style="width:32px; height:48px; object-fit:cover; margin-right:10px; border-radius:4px;" onerror="this.style.display='none'">
+                <div style="flex:1;">
+                    <div style="color:${isDup ? '#888' : 'white'}; font-weight:bold; font-size:0.9rem;">${g.title}</div>
+                    <div style="color:#666; font-size:0.75rem;">${(g.playtime_minutes / 60).toFixed(1)}h jogadas ${isDup ? '• <span style="color:#d4af37">JÁ NA COLEÇÃO</span>' : '• NOVO'}</div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+    // Initial count update
+    window.updateImportCount();
 };
 
 

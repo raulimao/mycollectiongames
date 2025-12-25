@@ -4,12 +4,90 @@ import { Config } from '../config.js';
 // Use API key from config (supports localStorage override)
 const RAWG_API_KEY = Config.RAWG_API_KEY;
 
+
+// --- SERVICE: PRICE TRACKER (CHEAPSHARK API) ---
+const PriceService = {
+    async getLowestPrice(gameTitle) {
+        try {
+            // 1. Search for game to get GameID
+            const searchUrl = `https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(gameTitle)}&limit=1`;
+            const searchRes = await fetch(searchUrl);
+            const searchData = await searchRes.json();
+
+            if (!searchData || searchData.length === 0) return null;
+
+            const gameId = searchData[0].gameID;
+            const thumb = searchData[0].thumb;
+
+            // 2. Get Game Details (Cheapest Price Ever vs Current)
+            const detailsUrl = `https://www.cheapshark.com/api/1.0/games?id=${gameId}`;
+            const detailsRes = await fetch(detailsUrl);
+            const detailsData = await detailsRes.json();
+
+            if (!detailsData || !detailsData.deals || detailsData.deals.length === 0) return null;
+
+            // Find lowest price currently available across all stores
+            // CheapShark returns an array of deals. We want the absolute lowest 'price'.
+            const deals = detailsData.deals;
+            // Sort by price ascending
+            deals.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+
+            const bestDeal = deals[0];
+            const storeID = bestDeal.storeID;
+
+            // Map common stores (CheapShark Store IDs)
+            // 1=Steam, 7=GOG, 8=Origin, 11=Humble, 25=Epic
+            const stores = { "1": "Steam", "7": "GOG", "8": "Origin", "11": "Humble", "25": "Epic Games" };
+            const storeName = stores[storeID] || "Other Store";
+
+            return {
+                price: parseFloat(bestDeal.price),
+                retailPrice: parseFloat(bestDeal.retailPrice),
+                savings: parseFloat(bestDeal.savings).toFixed(0),
+                store: storeName,
+                dealID: bestDeal.dealID,
+                thumb: thumb
+            };
+        } catch (e) {
+            // Suppress Fetch errors to avoid console spam (Status 429/CORS)
+            // console.warn("[PriceService] Erro (possível Rate Limit):", e.message); 
+            return null;
+        }
+    }
+};
+
 // --- CACHE & UTILS ---
 const CacheService = {
     set(key, data, ttlMinutes = 1440) {
-        const now = new Date();
-        const item = { value: data, expiry: now.getTime() + (ttlMinutes * 60 * 1000) };
-        localStorage.setItem(key, JSON.stringify(item));
+        try {
+            const now = new Date();
+            const item = { value: data, expiry: now.getTime() + (ttlMinutes * 60 * 1000) };
+            localStorage.setItem(key, JSON.stringify(item));
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                console.warn("Storage full. Clearing old cache...");
+                // Simple cleanup: Remove all API cache items
+                try {
+                    Object.keys(localStorage).forEach(k => {
+                        if (k.startsWith('search_') || k.startsWith('details_') || k.startsWith('tr_')) {
+                            localStorage.removeItem(k);
+                        }
+                    });
+                    // Try one more time
+                    try {
+                        const now = new Date();
+                        const item = { value: data, expiry: now.getTime() + (ttlMinutes * 60 * 1000) };
+                        localStorage.setItem(key, JSON.stringify(item));
+                    } catch (retryError) {
+                        console.warn("Storage still full after cleanup. Item not cached.");
+                    }
+                } catch (cleanupError) {
+                    console.error("Error during cache cleanup:", cleanupError);
+                }
+            } else {
+                console.warn("Cache error:", e);
+            }
+        }
     },
     get(key) {
         const itemStr = localStorage.getItem(key);
@@ -22,68 +100,77 @@ const CacheService = {
     }
 };
 
-// --- TRADUÇÃO INTELIGENTE (COM CACHE E RATE LIMITING) ---
+// --- TRADUÇÃO INTELIGENTE (COM CACHE PERSISTENTE E RATE LIMITING) ---
 
-// Cache de traduções para evitar requisições repetidas
+const simpleHash = str => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash &= hash;
+    }
+    return new Uint32Array([hash])[0].toString(36);
+};
+
+// Cache persistente para evitar chamadas de API repetidas
 const TranslationCache = {
-    data: {},
     get(text) {
-        const key = text.substring(0, 100); // Use first 100 chars as key
-        return this.data[key];
+        try {
+            const key = `tr_${simpleHash(text)}`;
+            const cached = localStorage.getItem(key);
+            return cached || null;
+        } catch (e) { return null; }
     },
     set(text, translation) {
-        const key = text.substring(0, 100);
-        this.data[key] = translation;
+        try {
+            const key = `tr_${simpleHash(text)}`;
+            localStorage.setItem(key, translation);
+        } catch (e) { /* LocalStorage full? Ignore */ }
     }
 };
 
-// Rate limiting: controla quando podemos fazer a próxima requisição
 let lastTranslationRequest = 0;
-let translationDisabled = false; // Flag quando API retorna 429
+let translationDisabled = false;
 
-// Função auxiliar que faz a chamada real COM rate limiting
 const fetchTranslationChunk = async (chunk) => {
-    // Se tradução está desabilitada (muitos 429s), retorna original
-    if (translationDisabled) return chunk;
-
-    // Verifica cache primeiro
+    // 1. Verifica Cache Local (Rápido e Grátis)
     const cached = TranslationCache.get(chunk);
     if (cached) return cached;
 
+    // 2. Se API bloqueou recentemente, retorna original sem tentar
+    // (Mas ainda salva no cache se um dia conseguirmos traduzir)
+    if (translationDisabled) return chunk;
+
     try {
-        // Rate limiting: espera 500ms entre requisições
+        // Rate limiting: Mínimo 1000ms entre chamadas (MyMemory é estrito)
         const now = Date.now();
-        const timeSinceLastRequest = now - lastTranslationRequest;
-        if (timeSinceLastRequest < 500) {
-            await new Promise(resolve => setTimeout(resolve, 500 - timeSinceLastRequest));
+        const timeSince = now - lastTranslationRequest;
+        if (timeSince < 1000) {
+            await new Promise(r => setTimeout(r, 1000 - timeSince));
         }
         lastTranslationRequest = Date.now();
 
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=en|pt-br`);
 
-        // Detecta rate limiting (429)
         if (res.status === 429) {
-            console.warn('⚠️ Translation API rate limit hit (429). Falling back to English.');
+            // Silencioso para não assustar o usuário, apenas fallback
+            // console.warn('Rate limit tradução (429). Fallback para inglês.');
             translationDisabled = true;
-            // Re-habilitar após 5 minutos
-            setTimeout(() => translationDisabled = false, 5 * 60 * 1000);
+            setTimeout(() => translationDisabled = false, 2 * 60 * 1000); // 2 min cooldown
             return chunk;
         }
 
         const data = await res.json();
 
-        // Verifica se a API devolveu sucesso e não um erro disfarçado
-        if (data.responseStatus === 200 &&
-            data.responseData.translatedText &&
-            !data.responseData.translatedText.includes("QUERY LENGTH LIMIT")) {
+        if (data.responseStatus === 200 && data.responseData.translatedText && !data.responseData.translatedText.includes("QUERY LENGTH LIMIT")) {
             const translated = data.responseData.translatedText;
-            TranslationCache.set(chunk, translated);
+            TranslationCache.set(chunk, translated); // Salva para sempre
             return translated;
         }
-        return chunk; // Falha silenciosa: retorna o original se der erro
+
+        return chunk;
     } catch (e) {
-        console.warn('Translation fetch error:', e);
-        return chunk; // Fallback de rede
+        return chunk;
     }
 };
 
@@ -129,8 +216,9 @@ const translateText = async (text) => {
             const translated = await fetchTranslationChunk(chunk);
             translatedChunks.push(translated);
 
-            // Se tradução foi desabilitada durante o loop, para de tentar
-            if (translationDisabled) break;
+            // Se falhou, o fetchTranslationChunk já retorna o original e seta a flag.
+            // Continuamos o loop para garantir que o resto do texto seja anexado (mesmo que em inglês).
+            // if (translationDisabled) break; // REMOVIDO PARA EVITAR TRUNCAMENTO
         }
         return translatedChunks.join(" ");
     } catch (e) {
@@ -140,7 +228,7 @@ const translateText = async (text) => {
 };
 
 // --- API DE JOGOS (RAWG) ---
-export const GameService = {
+const GameService = {
     async getMyProfile(userId) {
         if (!userId) return null;
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
@@ -211,22 +299,27 @@ export const GameService = {
             user_id: user.id
         }));
 
-        // Insert in batches of 50 to avoid request size limits
-        const BATCH_SIZE = 50;
+        // Insert in batches of 10 to ensure stability and progress tracking
+        const BATCH_SIZE = 10;
         const results = [];
+        console.log(`[BatchAdd] Starting insert of ${gamesWithUserId.length} games...`);
 
         for (let i = 0; i < gamesWithUserId.length; i += BATCH_SIZE) {
             const batch = gamesWithUserId.slice(i, i + BATCH_SIZE);
+            console.log(`[BatchAdd] Processing batch ${i / BATCH_SIZE + 1}...`);
+
             const { data, error } = await supabase.from('games').insert(batch).select();
 
             if (error) {
-                console.error('Batch insert error:', error);
+                console.error('[BatchAdd] Error:', error);
                 throw error;
             }
 
+            console.log(`[BatchAdd] Batch ${i / BATCH_SIZE + 1} success. Inserted ${data?.length} rows.`);
             results.push(...(data || []));
         }
 
+        console.log('[BatchAdd] All batches completed.');
         return results;
     },
 
@@ -249,24 +342,54 @@ export const GameService = {
         }
     },
 
+    async deleteByPlatform(userId, platform) {
+        if (!userId) throw new Error("User ID required");
+        // Delete games where platform is Steam (or 'PC' AND tag contains Steam if we were precise, but for now platform check is safer if we standardize 'Steam' imports as Platform='PC' with Tag='Steam'. But wait, ImportService sets platform='PC'. So we must delete by TAG or FILTER.)
+
+        // Better approach: User confirms deletion. We fetch all games check tags inside JSONB.
+        // Supabase 'cs' operator checks if JSONB contains key/value
+        // But tags is TEXT ARRAY.
+        // supabase.from('games').delete().contains('tags', ['Steam']).eq('user_id', userId)
+
+        const { data, error } = await supabase
+            .from('games')
+            .delete()
+            .eq('user_id', userId)
+            .contains('tags', ['Steam']) // This assumes specific tag 'Steam' is used
+            .select();
+
+        if (error) throw error;
+        return data ? data.length : 0;
+    },
+
     async searchRawg(query) {
         if (!query || query.length < 3) return [];
+        // console.log('[RAWG] Searching:', query);
         const cacheKey = `search_${query.toLowerCase()}`;
         const cached = CacheService.get(cacheKey);
         if (cached) return cached;
 
         try {
-            const res = await fetch(`https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`);
+            const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
+            // console.log('[RAWG] URL:', url); // Debug
+            const res = await fetch(url);
+            if (!res.ok) {
+                console.warn('[RAWG] API Error:', res.status);
+                return [];
+            }
             const data = await res.json();
             CacheService.set(cacheKey, data.results, 60);
             return data.results || [];
-        } catch (e) { return []; }
+        } catch (e) {
+            console.error('[RAWG] Catch Error:', e);
+            return [];
+        }
     },
 
     async getGameDetails(gameName) {
         if (!gameName) return null;
-        // ATENÇÃO: Mudei a versão do cache para v16 para forçar o recarregamento das descrições cortadas
-        const cacheKey = `details_v16_${gameName.toLowerCase().replace(/\s/g, '')}`;
+        // ATENÇÃO: Cache v17 para invalidar versões anteriores com descrições quebradas
+        const cacheKey = `details_v17_${gameName.toLowerCase().replace(/\s/g, '')}`;
         const cachedData = CacheService.get(cacheKey);
         if (cachedData) return cachedData;
 
@@ -301,13 +424,19 @@ export const GameService = {
     }
 };
 
+
+// --- EXPORTS ---
+export { GameService, SocialService, PriceService };
+
 // --- API SOCIAL ---
-export const SocialService = {
+
+const SocialService = {
     async getGlobalFeed() {
         const { data, error } = await supabase.from('social_feed').select(`*, social_likes (count)`).order('created_at', { ascending: false }).limit(50);
         if (error) throw error;
         return data.map(post => ({ ...post, likes_count: post.social_likes[0]?.count || 0 }));
     },
+
 
     async getUserLikes(userId) {
         const { data } = await supabase.from('social_likes').select('feed_id').eq('user_id', userId);
