@@ -1,6 +1,8 @@
 import { supabase } from './supabase.js';
+import { Config } from '../config.js';
 
-const RAWG_API_KEY = 'b435fbadf8c24701adce7ef05814f0d6';
+// Use API key from config (supports localStorage override)
+const RAWG_API_KEY = Config.RAWG_API_KEY;
 
 // --- CACHE & UTILS ---
 const CacheService = {
@@ -20,21 +22,67 @@ const CacheService = {
     }
 };
 
-// --- TRADUÇÃO INTELIGENTE (DIVIDIR E CONQUISTAR) ---
-// Função auxiliar que faz a chamada real
+// --- TRADUÇÃO INTELIGENTE (COM CACHE E RATE LIMITING) ---
+
+// Cache de traduções para evitar requisições repetidas
+const TranslationCache = {
+    data: {},
+    get(text) {
+        const key = text.substring(0, 100); // Use first 100 chars as key
+        return this.data[key];
+    },
+    set(text, translation) {
+        const key = text.substring(0, 100);
+        this.data[key] = translation;
+    }
+};
+
+// Rate limiting: controla quando podemos fazer a próxima requisição
+let lastTranslationRequest = 0;
+let translationDisabled = false; // Flag quando API retorna 429
+
+// Função auxiliar que faz a chamada real COM rate limiting
 const fetchTranslationChunk = async (chunk) => {
+    // Se tradução está desabilitada (muitos 429s), retorna original
+    if (translationDisabled) return chunk;
+
+    // Verifica cache primeiro
+    const cached = TranslationCache.get(chunk);
+    if (cached) return cached;
+
     try {
+        // Rate limiting: espera 500ms entre requisições
+        const now = Date.now();
+        const timeSinceLastRequest = now - lastTranslationRequest;
+        if (timeSinceLastRequest < 500) {
+            await new Promise(resolve => setTimeout(resolve, 500 - timeSinceLastRequest));
+        }
+        lastTranslationRequest = Date.now();
+
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=en|pt-br`);
+
+        // Detecta rate limiting (429)
+        if (res.status === 429) {
+            console.warn('⚠️ Translation API rate limit hit (429). Falling back to English.');
+            translationDisabled = true;
+            // Re-habilitar após 5 minutos
+            setTimeout(() => translationDisabled = false, 5 * 60 * 1000);
+            return chunk;
+        }
+
         const data = await res.json();
 
         // Verifica se a API devolveu sucesso e não um erro disfarçado
         if (data.responseStatus === 200 &&
             data.responseData.translatedText &&
             !data.responseData.translatedText.includes("QUERY LENGTH LIMIT")) {
-            return data.responseData.translatedText;
+            const translated = data.responseData.translatedText;
+            TranslationCache.set(chunk, translated);
+            return translated;
         }
         return chunk; // Falha silenciosa: retorna o original se der erro
     } catch (e) {
+        console.warn('Translation fetch error:', e);
         return chunk; // Fallback de rede
     }
 };
@@ -45,6 +93,12 @@ const translateText = async (text) => {
     // Limpa tags HTML para economizar caracteres e evitar quebra de layout
     const cleanText = text.replace(/<[^>]*>/g, '');
 
+    // Se tradução está desabilitada, retorna texto limpo em inglês
+    if (translationDisabled) {
+        console.log('ℹ️ Translation disabled due to rate limiting. Showing English text.');
+        return cleanText;
+    }
+
     // Se for curto, traduz direto (rápido)
     if (cleanText.length <= 450) {
         return await fetchTranslationChunk(cleanText);
@@ -52,7 +106,6 @@ const translateText = async (text) => {
 
     // --- ESTRATÉGIA SMART SPLIT ---
     // 1. Quebra o texto em frases baseadas em pontuação (. ! ?), mantendo a pontuação.
-    // O regex olha para .!? seguidos de espaço ou fim de linha.
     const sentences = cleanText.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [cleanText];
 
     const chunks = [];
@@ -60,29 +113,29 @@ const translateText = async (text) => {
 
     // 2. Empacota as frases em blocos de até 450 chars
     for (let sentence of sentences) {
-        // Se a frase atual + a nova frase ainda cabem no limite...
         if ((currentChunk + sentence).length < 450) {
             currentChunk += sentence;
         } else {
-            // Se não couber, fecha o pacote atual e começa um novo
             if (currentChunk) chunks.push(currentChunk);
             currentChunk = sentence;
         }
     }
-    // Adiciona o que sobrou no último pacote
     if (currentChunk) chunks.push(currentChunk);
 
-    // 3. Dispara todas as requisições em PARALELO
-    // Isso é muito mais rápido do que esperar uma por uma
+    // 3. Processa SEQUENCIALMENTE (não paralelo) para respeitar rate limit
     try {
-        const translatedChunks = await Promise.all(
-            chunks.map(chunk => fetchTranslationChunk(chunk))
-        );
-        // 4. Costura tudo de volta
+        const translatedChunks = [];
+        for (const chunk of chunks) {
+            const translated = await fetchTranslationChunk(chunk);
+            translatedChunks.push(translated);
+
+            // Se tradução foi desabilitada durante o loop, para de tentar
+            if (translationDisabled) break;
+        }
         return translatedChunks.join(" ");
     } catch (e) {
         console.warn("Erro no processo de tradução inteligente:", e);
-        return text; // Último recurso: mostra em inglês mesmo
+        return cleanText; // Último recurso: mostra em inglês mesmo
     }
 };
 
@@ -118,10 +171,10 @@ export const GameService = {
 
     async fetchStatsOnly(userId) {
         // Query otimizada: Traz dados suficientes para KPI, Gráficos E Renderização da Grid (Busca Global)
-        // Evita trazer campos pesados que não usamos na listagem, mas garante Tags e Imagens.
+        // Evita trazer campos pesados que não usamos na listagem, mas garante Tags, Imagens e Metacritic.
         const { data, error } = await supabase
             .from('games')
-            .select('id, status, platform, price_paid, price_sold, created_at, title, image_url, tags')
+            .select('id, status, platform, price_paid, price_sold, created_at, title, image_url, tags, metacritic')
             .eq('user_id', userId);
 
         if (error) throw error;
@@ -146,6 +199,35 @@ export const GameService = {
             .eq('platform', platform)
             .maybeSingle();
         return !!data;
+    },
+
+    async batchAddGames(gamesArray) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Usuário não autenticado');
+
+        // Add user_id to all games
+        const gamesWithUserId = gamesArray.map(game => ({
+            ...game,
+            user_id: user.id
+        }));
+
+        // Insert in batches of 50 to avoid request size limits
+        const BATCH_SIZE = 50;
+        const results = [];
+
+        for (let i = 0; i < gamesWithUserId.length; i += BATCH_SIZE) {
+            const batch = gamesWithUserId.slice(i, i + BATCH_SIZE);
+            const { data, error } = await supabase.from('games').insert(batch).select();
+
+            if (error) {
+                console.error('Batch insert error:', error);
+                throw error;
+            }
+
+            results.push(...(data || []));
+        }
+
+        return results;
     },
 
     async deleteGame(id) {

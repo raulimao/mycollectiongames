@@ -15,6 +15,18 @@ class Store {
             // 'allGamesStats' holds the complete list of games (lightweight) for charts, totals AND NOW for client-side pagination.
             allGamesStats: [],
             paginationLimit: 16, // Controls how many items are visible in the grid
+            visitedUserId: null, // Store visited user's ID for shared mode
+            // visitedBlockchainData removed - blockchain disabled
+            advancedFilters: {
+                platforms: [],      // Selected platforms
+                statuses: [],       // Selected statuses
+                tags: [],           // Selected tags
+                priceRange: [0, 10000],  // [min, max]
+                metacriticRange: [0, 100],  // [min, max]
+                sortBy: 'title',    // 'title' | 'price' | 'date' | 'metacritic'
+                sortDirection: 'asc'  // 'asc' | 'desc'
+            },
+            filtersActive: false, // Track if any filters are applied
 
             // --- DADOS SOCIAIS ---
             feedData: [],

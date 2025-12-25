@@ -1,6 +1,6 @@
 import { appStore } from './store.js';
 import { GameService } from '../services/api.js';
-import { GameChain } from '../services/blockchain.js';
+// blockchain import removed
 
 // Cache DOM Helper
 const getDOM = () => ({
@@ -133,30 +133,9 @@ export const renderApp = (state) => {
     const chartContainer = document.querySelector('.chart-container');
     if (chartContainer) chartContainer.style.display = 'flex';
 
-    // BLOCKCHAIN UI
-    if (typeof updateWalletUI === 'function') updateWalletUI();
-
-    // Async Init Chain (Cloud)
-    if (typeof GameChain !== 'undefined') {
-        GameChain.init().then(() => {
-            updateWalletUI(); // Refresh once loaded
-        });
-    }
+    // BLOCKCHAIN REMOVED - functionality disabled
 
     // Attach Listeners if not already attached (Idempotent check could be improved, but cheap here)
-    const walletBadge = document.getElementById('walletBadge');
-    if (walletBadge) {
-        // Hide owner's wallet when viewing another user's profile
-        if (state.isSharedMode) {
-            walletBadge.classList.add('hidden');
-        } else {
-            walletBadge.classList.remove('hidden');
-            walletBadge.onclick = () => openExplorer();
-        }
-    }
-
-    const closeExp = document.getElementById('closeExplorer');
-    if (closeExp) closeExp.onclick = () => document.getElementById('explorerModal').classList.add('hidden');
 
     // Use allGamesStats for calculations if available (Total Collection), otherwise fallback to loaded games
     const statsSource = state.allGamesStats || state.games || [];
@@ -169,7 +148,7 @@ export const renderApp = (state) => {
 
     let sourceData = statsSource;
 
-    // Apply Filters
+    // Apply Basic Filters (Tab-based)
     let filteredGames = sourceData;
 
     if (activeFilter === 'sold') filteredGames = filteredGames.filter(g => g.status === 'Vendido');
@@ -178,8 +157,10 @@ export const renderApp = (state) => {
     else if (activeFilter === 'backlog') filteredGames = filteredGames.filter(g => ['Backlog', 'Jogando'].includes(g.status));
     else filteredGames = filteredGames.filter(g => !['Vendido', 'Backlog', 'Desejado'].includes(g.status));
 
+    // Search Term
     if (term) filteredGames = filteredGames.filter(g => g.title.toLowerCase().includes(term));
 
+    // Chart Platform Filter (existing)
     if (state.activePlatform) {
         filteredGames = filteredGames.filter(g => g.platform === state.activePlatform);
         if (DOM.filterBadge) {
@@ -189,6 +170,12 @@ export const renderApp = (state) => {
     } else {
         if (DOM.filterBadge) DOM.filterBadge.classList.add('hidden');
     }
+
+    // ADVANCED FILTERS
+    filteredGames = applyAdvancedFilters(filteredGames, state.advancedFilters);
+
+    // SORTING
+    filteredGames = applySorting(filteredGames, state.advancedFilters.sortBy);
 
     // Client-Side Pagination Slicing
     const limit = state.paginationLimit || 16;
@@ -210,6 +197,89 @@ export const renderApp = (state) => {
     renderXP(statsSource);
 };
 
+// --- ADVANCED FILTERS HELPER ---
+const applyAdvancedFilters = (games, filters) => {
+    if (!filters) return games;
+
+    let filtered = [...games];
+
+    // Platform Filter (multi-select)
+    if (filters.platforms && filters.platforms.length > 0) {
+        filtered = filtered.filter(g => filters.platforms.includes(g.platform));
+    }
+
+    // Status Filter (multi-select)
+    if (filters.statuses && filters.statuses.length > 0) {
+        filtered = filtered.filter(g => filters.statuses.includes(g.status));
+    }
+
+    // Tags Filter
+    if (filters.tags && filters.tags.length > 0) {
+        filtered = filtered.filter(g => {
+            if (!g.tags || !Array.isArray(g.tags)) return false;
+            return filters.tags.some(tag => g.tags.includes(tag));
+        });
+    }
+
+    // Price Range
+    if (filters.priceRange) {
+        const [min, max] = filters.priceRange;
+        filtered = filtered.filter(g => {
+            const price = g.price_paid || 0;
+            return price >= min && price <= max;
+        });
+    }
+
+    // Metacritic Range - Only filter if user changed from defaults
+    if (filters.metacriticRange) {
+        const [min, max] = filters.metacriticRange;
+        // Only apply if user actually changed the range from default (0-100)
+        if (min > 0 || max < 100) {
+            filtered = filtered.filter(g => {
+                if (!g.metacritic) return false; // Exclude games without rating
+                return g.metacritic >= min && g.metacritic <= max;
+            });
+        }
+    }
+
+    return filtered;
+};
+
+// --- SORTING HELPER ---
+const applySorting = (games, sortBy) => {
+    if (!sortBy || sortBy === 'title') {
+        return [...games].sort((a, b) => a.title.localeCompare(b.title));
+    }
+
+    const sorted = [...games];
+
+    switch (sortBy) {
+        case 'title-desc':
+            return sorted.sort((a, b) => b.title.localeCompare(a.title));
+
+        case 'date':
+            return sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        case 'date-desc':
+            return sorted.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        case 'price':
+            return sorted.sort((a, b) => (a.price_paid || 0) - (b.price_paid || 0));
+
+        case 'price-desc':
+            return sorted.sort((a, b) => (b.price_paid || 0) - (a.price_paid || 0));
+
+        case 'metacritic':
+            return sorted.sort((a, b) => (b.metacritic || 0) - (a.metacritic || 0));
+
+        case 'metacritic-desc':
+            return sorted.sort((a, b) => (a.metacritic || 0) - (b.metacritic || 0));
+
+        default:
+            return sorted;
+    }
+};
+
 // --- RENDER HEADER (NEW UX OVERHAUL) ---
 const renderHeader = (state, DOM, currentUser, isShared) => {
     const { followers_count, following_count } = state.profileStats || { followers_count: 0, following_count: 0 };
@@ -218,13 +288,12 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
     let centerHtml = '';
 
     if (isShared) {
-        // VISITOR MODE: Identity Badge + XP + Stats + Blockchain Count
-        const blockCount = state.visitedBlockchainData?.blocks?.length || 0;
-        console.log('🎨 Rendering visitor header - blockchain data:', state.visitedBlockchainData, 'count:', blockCount);
+        // VISITOR MODE: Identity Badge + XP + Stats + Games Count
+        const visitorStats = state.allGamesStats || [];
+        const totalGames = visitorStats.length;
 
         // Calculate XP for visited user (SAME FORMULA as renderXP)
         const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
-        const visitorStats = state.allGamesStats || [];
         let visitorXP = 0;
         visitorStats.forEach(g => visitorXP += (XP_TABLE[g.status] || 0));
 
@@ -264,8 +333,8 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                         <span style="font-size:0.6rem; color:#888; text-transform:uppercase">Seguindo</span>
                     </div>
                 </div>
-                <div class="wallet-badge" style="cursor:default; padding:6px 12px; border-radius:10px; background:rgba(217,70,239,0.1); border:1px solid var(--primary)" title="Blocos minerados por este usuário">
-                    <i class="fa-solid fa-cube"></i> <span style="font-family:var(--font-num); font-weight:bold">${blockCount}</span> BLOCKS
+                <div style="cursor:default; padding:6px 12px; border-radius:10px; background:rgba(0,212,255,0.1); border:1px solid var(--secondary)" title="Total de jogos na coleção">
+                    <i class="fa-solid fa-gamepad"></i> <span style="font-family:var(--font-num); font-weight:bold">${totalGames}</span> JOGOS
                 </div>
             </div>
         `;
@@ -353,7 +422,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                 `;
             }
         } else {
-            // OWNER ACTIONS (Consolidated Action Bar)
+            // OWNER ACTIONS - Define notification variables first
             const unreadCount = state.notifications ? state.notifications.filter(n => !n.read).length : 0;
             const notifBadge = unreadCount > 0 ? `<span style="position:absolute; top:-2px; right:-2px; width:8px; height:8px; background:var(--danger); border-radius:50%; box-shadow:0 0 5px var(--danger)"></span>` : '';
             const panelClass = state.isNotificationsOpen ? 'glass-panel' : 'glass-panel hidden';
@@ -375,7 +444,66 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                 }).join('');
             }
 
-            rightHtml = `
+            // Detect mobile viewport
+            const isMobile = window.innerWidth < 768;
+
+            if (isMobile) {
+                // MOBILE OWNER LAYOUT: Hamburger Menu
+                rightHtml = `
+                    <div style="display:flex; align-items:center; gap:8px">
+                        <!-- Avatar -->
+                        <img src="${finalAvatar}" style="width:32px; height:32px; border-radius:10px; border:2px solid rgba(255,255,255,0.1); object-fit:cover">
+                        
+                        <!-- Nick -->
+                        <span style="font-size:0.75rem; color:#fff; font-weight:600">${displayNick}</span>
+                        
+                        <!-- Hamburger Menu -->
+                        <button onclick="document.getElementById('mobileMenu').classList.toggle('hidden')" class="icon-btn" style="width:32px; height:32px; border-radius:8px; border:none; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; position:relative">
+                            <i class="fa-solid fa-bars"></i>
+                            ${unreadCount > 0 ? `<span style="position:absolute; top:2px; right:2px; width:8px; height:8px; background:var(--danger); border-radius:50%; box-shadow:0 0 5px var(--danger)"></span>` : ''}
+                        </button>
+                        
+                        <!-- Mobile Dropdown Menu -->
+                        <div id="mobileMenu" class="hidden glass-panel" style="position:fixed; top:60px; right:10px; width:200px; padding:8px; background:#141416; border:1px solid rgba(255,255,255,0.1); z-index:9999; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.8)">
+                            <!-- Link -->
+                            <div id="btnShareProfile" style="padding:10px; border-radius:8px; cursor:pointer; color:#ccc; font-size:0.85rem; display:flex; align-items:center; gap:10px; transition:0.2s" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                                <i class="fa-solid fa-link" style="width:16px; color:var(--secondary)"></i> Link Público
+                            </div>
+                            <!-- Card -->
+                            <div id="btnGenCard" style="padding:10px; border-radius:8px; cursor:pointer; color:#ccc; font-size:0.85rem; display:flex; align-items:center; gap:10px; transition:0.2s" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                                <i class="fa-solid fa-camera" style="width:16px; color:var(--primary)"></i> Card Social
+                            </div>
+                            <!-- Notifications -->
+                            <div onclick="window.openNotifications(); document.getElementById('mobileMenu').classList.add('hidden')" style="padding:10px; border-radius:8px; cursor:pointer; color:#ccc; font-size:0.85rem; display:flex; align-items:center; gap:10px; transition:0.2s; position:relative" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                                <i class="fa-solid fa-bell" style="width:16px; color:var(--warning)"></i> Notificações
+                                ${unreadCount > 0 ? `<span style="background:var(--danger); color:#fff; padding:1px 6px; border-radius:10px; font-size:0.6rem; font-weight:bold">${unreadCount}</span>` : ''}
+                            </div>
+                            <div style="height:1px; background:rgba(255,255,255,0.1); margin:5px 0"></div>
+                            <!-- Edit Profile -->
+                            <div onclick="window.handleEditProfile()" style="padding:10px; border-radius:8px; cursor:pointer; color:#ccc; font-size:0.85rem; display:flex; align-items:center; gap:10px; transition:0.2s" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                                <i class="fa-solid fa-user-pen" style="width:16px"></i> Editar Perfil
+                            </div>
+                            <!-- Logout -->
+                            <div onclick="window.handleLogout()" style="padding:10px; border-radius:8px; cursor:pointer; color:var(--danger); font-size:0.85rem; display:flex; align-items:center; gap:10px; transition:0.2s" onmouseover="this.style.background='rgba(255,0,0,0.1)'" onmouseout="this.style.background='transparent'">
+                                <i class="fa-solid fa-power-off" style="width:16px"></i> Sair
+                            </div>
+                        </div>
+                        
+                        <!-- Notifications Panel (shows when clicked) -->
+                        <div id="notifPanel" class="${panelClass}" style="position:fixed; top:60px; right:10px; width:280px; max-height:400px; overflow-y:auto; background:#141416; border:1px solid rgba(255,255,255,0.1); border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.8); z-index:10000">
+                            <div style="padding:10px; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02)">
+                                <span style="font-size:0.7rem; color:#888; font-weight:bold">NOTIFICAÇÕES</span>
+                                <i class="fa-solid fa-xmark" onclick="event.stopPropagation(); window.openNotifications()" style="cursor:pointer; color:#666"></i>
+                            </div>
+                            <div style="max-height:300px; overflow-y:auto">
+                                ${notifList}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // DESKTOP OWNER LAYOUT (existing)
+                rightHtml = `
                 <div class="action-bar" style="display:flex; align-items:center; gap:5px; margin-right:15px; padding-right:15px; border-right:1px solid rgba(255,255,255,0.1)">
                     <!-- Public Link -->
                     <button id="btnShareProfile" class="icon-btn" title="Copiar Link Público" style="width:32px; height:32px; border-radius:8px; border:none; background:rgba(255,255,255,0.05); color:#ccc; cursor:pointer; transition:0.2s">
@@ -423,6 +551,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                     </div>
                 </div>
             `;
+            }
         }
     } else {
         // GUEST
@@ -566,8 +695,20 @@ const renderFeed = (feedItems, userLikes = []) => {
         feedInfo.className = 'feed-info';
         feedInfo.style.flex = '1';
 
+        // Defensive parsing for game_title (sometimes comes as JSON from DB trigger)
+        let gameTitle = item.game_title || 'Jogo sem título';
+        if (typeof gameTitle === 'string' && gameTitle.trim().startsWith('{')) {
+            try {
+                const parsed = JSON.parse(gameTitle);
+                gameTitle = parsed.title || parsed.name || 'Jogo sem título';
+            } catch (e) {
+                console.warn('Failed to parse game_title JSON:', gameTitle);
+                // Keep original if parse fails
+            }
+        }
+
         const h3 = document.createElement('h3');
-        h3.textContent = item.game_title;
+        h3.textContent = gameTitle;
 
         const platformBadge = document.createElement('span');
         platformBadge.className = 'badge';
@@ -683,6 +824,35 @@ const renderGrid = (visibleGames, isShared, totalCount = 0) => {
                 tagsDiv.appendChild(tagSpan);
             });
             imgWrapper.appendChild(tagsDiv);
+        }
+
+        // Metacritic Badge (Top Left)
+        if (game.metacritic && game.metacritic > 0) {
+            const mcBadge = document.createElement('div');
+            mcBadge.className = 'metacritic-badge';
+
+            // Color coding
+            let mcColor = '#ef4444'; // red for < 50
+            if (game.metacritic >= 75) mcColor = '#22c55e'; // green
+            else if (game.metacritic >= 50) mcColor = '#eab308'; // yellow
+
+            mcBadge.style.cssText = `
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                background: ${mcColor};
+                color: #000;
+                font-weight: bold;
+                font-size: 0.7rem;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: var(--font-num);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                z-index: 2;
+            `;
+            mcBadge.textContent = game.metacritic;
+            mcBadge.title = `Metacritic: ${game.metacritic}/100`;
+            imgWrapper.appendChild(mcBadge);
         }
 
         // Card Body
@@ -1104,81 +1274,15 @@ export const exportData = () => {
     }
 };
 
-// --- BLOCKCHAIN UI HELPERS ---
+// --- BLOCKCHAIN REMOVED ---
 
 export const updateWalletUI = () => {
-    // Don't show wallet badge in visitor mode
-    const { isSharedMode } = appStore.get();
-
-    // Show Badge only if NOT in shared mode
-    const badge = document.getElementById('walletBadge');
-    if (badge) {
-        if (isSharedMode) {
-            badge.classList.add('hidden');
-        } else {
-            badge.classList.remove('hidden');
-        }
-    }
-
-    // Update Count
-    const count = GameChain.chain.length;
-    const countEl = document.getElementById('blockCount');
-    if (countEl) countEl.innerText = count;
-
-    // Update Explorer Stats
-    const expTotal = document.getElementById('expTotalBlocks');
-    if (expTotal) expTotal.innerText = count;
-
-    const genesis = GameChain.chain[0];
-    const expGen = document.getElementById('expGenesis');
-    if (expGen && genesis) expGen.innerText = genesis.timestamp.split('T')[0];
-
-    // Calc Net Worth (Latest)
-    const latest = GameChain.getLatestBlock();
-    const expNet = document.getElementById('expNetWorth');
-    if (expNet && latest && latest.data && latest.data.stats && latest.data.stats.value) {
-        expNet.innerText = formatMoney(latest.data.stats.value);
-    }
+    // Blockchain removed - function disabled
 };
 
 export const openExplorer = () => {
-    const modal = document.getElementById('explorerModal');
-    const timeline = document.getElementById('explorerTimeline');
-    if (!modal || !timeline) return;
-
-    modal.classList.remove('hidden');
-
-    // Populate Timeline
-    const data = GameChain.getExplorerData();
-    let html = '';
-
-    data.forEach(block => {
-        const isGenesis = block.height === 0;
-        const tier = block.data && block.data.tier ? block.data.tier : 'COMMON';
-        let tierColor = '#888';
-        if (tier === 'RARE') tierColor = '#00d4ff';
-        if (tier === 'LEGENDARY') tierColor = '#ffd700';
-
-        html += `
-            <div class="timeline-item">
-                <div class="timeline-dot" style="background:${tierColor}; box-shadow: 0 0 10px ${tierColor}"></div>
-                <div class="timeline-content">
-                    <div class="timeline-hash" title="${block.hash}">#${block.height} - ${block.hash}</div>
-                    <div class="timeline-meta">
-                        <span>${block.time}</span>
-                        <span style="color:${tierColor}; font-weight:bold">${tier}</span>
-                    </div>
-                    ${!isGenesis ? `
-                    <div style="margin-top:5px; font-size:0.8rem; border-top:1px solid rgba(255,255,255,0.1); padding-top:5px;">
-                        <div>💰 Worth: ${formatMoney(block.data.stats.value)}</div>
-                        <div>🎮 Games: ${block.data.stats.games}</div>
-                        <div>🏆 MVP: ${block.data.stats.mvp}</div>
-                    </div>` : '<div style="margin-top:5px; font-size:0.8rem">🚀 The Beginning</div>'}
-                </div>
-            </div>
-        `;
-    });
-    timeline.innerHTML = html;
+    // Blockchain removed - function disabled
+    console.log('Blockchain explorer has been removed');
 };
 
 // --- MODIFIED GENERATE CARD ---
@@ -1217,7 +1321,57 @@ export const generateSocialCard = async () => {
         // 1. POPULATE IDENTITY
         name.innerText = sharedProfileName ? sharedProfileName.toUpperCase() : "PLAYER ONE";
         const profile = appStore.get().userProfile;
-        avatar.src = (profile && profile.avatar_url) ? profile.avatar_url : "https://ui-avatars.com/api/?name=" + (sharedProfileName || "Player") + "&background=0ea5e9&color=fff";
+
+        // Generate fallback avatar as canvas data URL (avoids CORS issues)
+        const generateFallbackAvatar = (name) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, 200, 200);
+            gradient.addColorStop(0, '#0ea5e9');
+            gradient.addColorStop(1, '#a855f7');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 200, 200);
+
+            // Text (initials)
+            const initials = (name || 'G').substring(0, 2).toUpperCase();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 80px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(initials, 100, 100);
+
+            return canvas.toDataURL('image/png');
+        };
+
+        const fallbackAvatar = generateFallbackAvatar(sharedProfileName || "Player");
+
+        // Try to load profile avatar, fallback if 404
+        const avatarUrl = (profile && profile.avatar_url) ? profile.avatar_url : fallbackAvatar;
+
+        // Pre-check if avatar is accessible (for external URLs)
+        if (avatarUrl.startsWith('http')) {
+            try {
+                const avatarTest = new Image();
+                avatarTest.crossOrigin = "anonymous";
+                await new Promise((resolve, reject) => {
+                    avatarTest.onload = resolve;
+                    avatarTest.onerror = reject;
+                    avatarTest.src = avatarUrl;
+                    // Timeout after 3 seconds
+                    setTimeout(() => reject(new Error('timeout')), 3000);
+                });
+                avatar.src = avatarUrl;
+            } catch (e) {
+                console.warn('⚠️ Avatar failed to load, using fallback:', e);
+                avatar.src = fallbackAvatar;
+            }
+        } else {
+            avatar.src = avatarUrl;
+        }
         avatar.crossOrigin = "anonymous";
 
         // 2. CALCULATE STATS
@@ -1292,8 +1446,8 @@ export const generateSocialCard = async () => {
         if (tier === 'LEGENDARY') card.classList.add('tier-legendary');
 
 
-        // 4. MINT BLOCK
-        const nftData = {
+        // 4. GENERATE UNIQUE CARD HASH (No blockchain)
+        const cardData = {
             owner: sharedProfileName || "User",
             date: new Date().toISOString(),
             stats: { games: displayGamesCount, value: netInvestment, mvp: mvpName },
@@ -1301,31 +1455,20 @@ export const generateSocialCard = async () => {
             tier: tier
         };
 
-        let newBlock = { index: 'X' };
+        // Generate unique hash for this card
+        const cardHash = CryptoJS.SHA256(JSON.stringify(cardData) + Date.now()).toString();
+        hashEl.innerText = cardHash;
+        hashEl.title = cardHash;
 
-        // Ensure GameChain is ready
-        if (typeof GameChain === 'undefined') {
-            console.error("Blockchain service not loaded");
-        } else {
-            // Async Add Block (Cloud)
-            await GameChain.addBlock(nftData);
-            newBlock = GameChain.getLatestBlock();
+        // Update Games Count on Card (replacing block count)
+        const scBlockCount = document.getElementById('scBlockCount');
+        if (scBlockCount) scBlockCount.innerText = displayGamesCount;
 
-            const fullHash = newBlock.hash;
-            hashEl.innerText = fullHash;
-            hashEl.title = fullHash;
+        const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+        const dateObj = new Date();
+        dateEl.innerText = `${dateObj.getDate()} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
 
-            // Fix: Update Block Count on Card
-            const scBlockCount = document.getElementById('scBlockCount');
-            if (scBlockCount) scBlockCount.innerText = GameChain.chain.length;
-
-            const dateObj = new Date(newBlock.timestamp);
-            const months = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-            dateEl.innerText = `${dateObj.getDate()} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
-
-            showToast(`Bloco #${newBlock.index} Minerado! (${tier})`, "success");
-            updateWalletUI(); // Refresh Wallet Badge
-        }
+        showToast(`Card Gerado! Raridade: ${tier}`, "success");
 
         // INJECT RARITY BADGE INTO HEADER RIGHT
         const headerRight = card.querySelector('.nft-header-right');
@@ -1358,7 +1501,7 @@ export const generateSocialCard = async () => {
             ignoreElements: (element) => element.classList.contains('nft-holo')
         });
         const link = document.createElement('a');
-        link.download = `GameVault_NFT_${sharedProfileName || 'Genesis'}_Block${newBlock.index}_${tier}.png`;
+        link.download = `GameVault_Card_${sharedProfileName || 'Genesis'}_${tier}_${Date.now()}.png`;
         link.href = canvas.toDataURL("image/png", 1.0);
         link.click();
         showToast("Card Salvo! Verifique sua carteira.", "success");
