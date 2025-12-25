@@ -14,12 +14,13 @@ gog-oauth-server/node_modules/
 *.env
 
 # =====================================================
-# ⚠️ CRITICAL: Files with REAL API keys/credentials
-# These files contain YOUR actual credentials!
-# Only .template.js versions should be committed
+# GITHUB PAGES REQUIRE THESE FILES
+# For static hosting, we must commit them.
+# The Supabase Anon Key is safe to be public.
+# The RAWG Key will be exposed (acceptable for free tier).
 # =====================================================
-js/config.js
-js/services/supabase.js
+# js/config.js
+# js/services/supabase.js
 
 # API Keys & Secrets
 secrets.json
