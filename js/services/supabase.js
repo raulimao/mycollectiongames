@@ -1,5 +1,9 @@
 // CORREÇÃO: Acessa o Supabase Global (injetado via script tag no index.html)
-// Isso evita o erro de "AuthClient null" causado por imports ESM via CDN.
+if (!window.supabase) {
+    console.error("❌ CRITICAL: Supabase client script not loaded from CDN!");
+    alert("Erro crítico: Supabase não carregou. Verifique sua conexão ou bloqueadores de anúncio.");
+    throw new Error("Supabase SDK not found");
+}
 const { createClient } = window.supabase;
 
 // Configurações do Projeto

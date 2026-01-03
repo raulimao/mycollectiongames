@@ -4,6 +4,11 @@ import { ImportService } from './services/importer.js';
 import { GogImportService } from './services/gogImporter.js';
 import { SubscriptionService } from './services/subscriptionService.js';
 import { appStore } from './modules/store.js';
+
+import { Diagnostics } from './modules/diagnostics.js';
+
+// Force global exposure
+window.GameVaultDebug = Diagnostics;
 import { renderApp, showToast, toggleModal, exportData, renderUserList } from './modules/ui.js';
 import { initMobileTouchHandlers, handleOrientationChange, initNetworkDetection } from './modules/mobile.js';
 
@@ -241,21 +246,32 @@ window.handleListFollow = async (targetId, btn) => {
 };
 
 const init = async () => {
-    console.log("🚀 [System] GameVault Init");
-    appStore.subscribe(state => renderApp(state));
-    setupGlobalEvents();
+    try {
+        console.log("🚀 [System] GameVault Init Started");
+        appStore.subscribe(state => renderApp(state));
+        appStore.subscribe(state => renderApp(state));
 
-    // Infinite Scroll Removed
-    // setupInfiniteScroll();
+        // Init Diagnostics
+        Diagnostics.audit();
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const sharedNick = urlParams.get('u');
+        setupGlobalEvents();
 
-    if (sharedNick) {
-        await handleVisitorMode(sharedNick);
-        checkAuthForVisitor();
-    } else {
-        checkAuthStatus();
+        // Infinite Scroll Removed
+        // setupInfiniteScroll();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sharedNick = urlParams.get('u');
+
+        if (sharedNick) {
+            await handleVisitorMode(sharedNick);
+            checkAuthForVisitor();
+        } else {
+            checkAuthStatus();
+        }
+    } catch (e) {
+        console.error("🔥 CRITICAL INIT ERROR:", e);
+        if (window.Diagnostics) window.Diagnostics.logError("INIT", e);
+        alert("Erro na inicialização: " + e.message);
     }
 };
 
@@ -315,7 +331,10 @@ const checkAuthStatus = () => {
             }
         }
     });
+
 };
+
+
 
 const handleUserLoggedIn = async (user) => {
     try {

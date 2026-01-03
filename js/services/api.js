@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js';
 import { Config } from '../config.js';
+import { Diagnostics } from '../modules/diagnostics.js';
 
 // Use API key from config (supports localStorage override)
 const RAWG_API_KEY = Config.RAWG_API_KEY;
@@ -11,7 +12,11 @@ const PriceService = {
         try {
             // 1. Search for game to get GameID
             const searchUrl = `https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(gameTitle)}&limit=1`;
+            const searchStart = Diagnostics.startTimer('Price Check API');
             const searchRes = await fetch(searchUrl);
+            searchStart();
+
+            Diagnostics.logNetwork(searchRes.ok, 'GET', searchUrl, 0, searchRes.status);
             const searchData = await searchRes.json();
 
             if (!searchData || searchData.length === 0) return null;
@@ -371,7 +376,7 @@ const GameService = {
 
         try {
             const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
-            // console.log('[RAWG] URL:', url); // Debug
+            Diagnostics.logNetwork(true, 'GET', url);
             const res = await fetch(url);
             if (!res.ok) {
                 console.warn('[RAWG] API Error:', res.status);

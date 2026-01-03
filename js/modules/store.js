@@ -1,6 +1,8 @@
 /**
  * Gerenciador de Estado Centralizado (Observer Pattern)
  */
+import { Diagnostics } from './diagnostics.js';
+
 class Store {
     constructor() {
         this.state = this.getInitialState();
@@ -53,6 +55,9 @@ class Store {
     setState(newState) {
         const prevState = { ...this.state };
         this.state = { ...this.state, ...newState };
+
+        Diagnostics.logState(prevState, this.state); // Hook de Diagnóstico
+
         this.listeners.forEach(listener => listener(this.state, prevState));
     }
 
