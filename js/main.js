@@ -1,12 +1,15 @@
 import { supabase, AuthService } from './services/supabase.js';
 import { GameService, SocialService, PriceService } from './services/api.js';
 import { ImportService } from './services/importer.js';
+import { GogImportService } from './services/gogImporter.js';
+import { SubscriptionService } from './services/subscriptionService.js';
 import { appStore } from './modules/store.js';
 import { renderApp, showToast, toggleModal, exportData, renderUserList } from './modules/ui.js';
 import { initMobileTouchHandlers, handleOrientationChange, initNetworkDetection } from './modules/mobile.js';
 
 let editingId = null;
 let isInitializing = false;
+let userSubscription = null; // Cache da subscription do usuário
 
 const DEFAULT_PLATFORMS = ["PC", "PlayStation 5", "PlayStation 4", "Xbox Series X/S", "Xbox One", "Nintendo Switch", "Steam Deck", "Mobile", "Outros"];
 
@@ -325,6 +328,7 @@ const handleUserLoggedIn = async (user) => {
         }
         setupAuthEvents();
         await loadData(user.id);
+        await loadUserSubscription(user.id); // Carrega status da assinatura
     } catch (error) { console.error("Login error:", error); }
 };
 
@@ -816,13 +820,24 @@ const handleFormSubmit = async (e) => {
         return;
     }
 
+    // FEATURE GATING: Verificar limite de jogos para usuários Free
+    const { user, games } = appStore.get();
+    if (!editingId && user) { // Só verifica no ADD, não no EDIT
+        const canAdd = await SubscriptionService.checkGameLimit(user.id, games.length);
+        if (!canAdd) {
+            window.showUpgradeModal('Jogos ilimitados');
+            showToast('Limite de 50 jogos atingido. Seja PRO!', 'warning');
+            return;
+        }
+    }
+
     const platform = document.getElementById('inputPlatform').value || 'Outros';
 
     btn.innerText = "VERIFICANDO..."; btn.disabled = true;
 
     try {
-        const { user } = appStore.get();
-        if (!user) throw new Error("Usuário não autenticado.");
+        const currentUser = appStore.get().user;
+        if (!currentUser) throw new Error("Usuário não autenticado.");
 
         // VALIDATION: Duplicates (Only for new games)
         // Optimization: Use Client-Side check instead of Server call
@@ -1450,6 +1465,436 @@ const handleImportError = (error, source) => {
 };
 
 // ===================================================================================================
+// GOG GALAXY IMPORT HANDLERS
+// ===================================================================================================
+
+let gogGalaxyData = null;
+let gogPreviewGames = [];
+let gogAvailablePlatforms = [];
+
+// Handler para mudança de plataforma de importação
+window.handleImportPlatformChange = (value) => {
+    const steamConfig = document.getElementById('steamConfig');
+    const gogConfig = document.getElementById('gogGalaxyConfig');
+    const btnStartImport = document.getElementById('btnStartImport');
+    const steamDeleteSection = document.getElementById('steamDeleteSection');
+    const gogDeleteSection = document.getElementById('gogDeleteSection');
+
+    // Reset estado do GOG Galaxy quando muda de plataforma
+    resetGogGalaxyState();
+
+    if (value === 'goggalaxy') {
+        steamConfig.classList.add('hidden');
+        gogConfig.classList.remove('hidden');
+        steamDeleteSection.classList.add('hidden');
+        gogDeleteSection.classList.remove('hidden');
+        btnStartImport.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
+        btnStartImport.onclick = () => handleGogGalaxyPreview();
+        btnStartImport.style.background = '';
+        btnStartImport.disabled = false;
+    } else {
+        steamConfig.classList.remove('hidden');
+        gogConfig.classList.add('hidden');
+        steamDeleteSection.classList.remove('hidden');
+        gogDeleteSection.classList.add('hidden');
+        btnStartImport.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
+        btnStartImport.onclick = () => handleImportSubmit();
+        btnStartImport.style.background = '';
+        btnStartImport.disabled = false;
+    }
+};
+
+// Reset do estado do GOG Galaxy
+const resetGogGalaxyState = () => {
+    gogGalaxyData = null;
+    gogPreviewGames = [];
+    gogAvailablePlatforms = [];
+
+    // Reset UI elements se existirem
+    const jsonInput = document.getElementById('gogJsonInput');
+    if (jsonInput) jsonInput.value = '';
+
+    const platformSelection = document.getElementById('gogPlatformSelection');
+    if (platformSelection) platformSelection.classList.add('hidden');
+
+    const quickActions = document.getElementById('gogQuickActions');
+    if (quickActions) quickActions.classList.add('hidden');
+
+    const previewStats = document.getElementById('gogPreviewStats');
+    if (previewStats) previewStats.classList.add('hidden');
+
+    const platformCheckboxes = document.getElementById('gogPlatformCheckboxes');
+    if (platformCheckboxes) platformCheckboxes.innerHTML = '';
+
+    // Reset stats
+    const stats = ['gogStatTotal', 'gogStatNew', 'gogStatDuplicate', 'gogStatSelected'];
+    stats.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '0';
+    });
+};
+
+// Handler para upload de arquivo JSON
+window.handleGogFileUpload = (input) => {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        document.getElementById('gogJsonInput').value = e.target.result;
+        showToast('Arquivo carregado! Clique em "Carregar e Visualizar"', 'success');
+    };
+    reader.onerror = () => {
+        showToast('Erro ao ler arquivo', 'error');
+    };
+    reader.readAsText(file);
+};
+
+// Handler para carregar e visualizar jogos do GOG Galaxy
+const handleGogGalaxyPreview = async () => {
+    // FEATURE GATING: Verificar se usuário tem acesso ao GOG Import
+    const { user } = appStore.get();
+    if (user) {
+        const canAccess = await SubscriptionService.canAccess(user.id, 'hasGogImport');
+        if (!canAccess) {
+            window.showUpgradeModal('Importação GOG Galaxy/Epic');
+            return;
+        }
+    }
+
+    const jsonInput = document.getElementById('gogJsonInput').value.trim();
+
+    if (!jsonInput) {
+        showToast('Cole o JSON do relatório GOG Galaxy primeiro', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btnStartImport');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CARREGANDO...';
+
+    try {
+        gogGalaxyData = JSON.parse(jsonInput);
+
+        // Mostrar seleção de plataformas
+        gogAvailablePlatforms = GogImportService.getAvailablePlatforms(gogGalaxyData);
+
+        if (gogAvailablePlatforms.length === 0) {
+            showToast('Nenhuma plataforma encontrada no JSON', 'warning');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
+            return;
+        }
+
+        renderGogPlatformSelection(gogAvailablePlatforms);
+        updateGogDeletePlatformOptions();
+
+        // Mostrar stats iniciais
+        document.getElementById('gogPlatformSelection').classList.remove('hidden');
+        document.getElementById('gogQuickActions').classList.remove('hidden');
+        document.getElementById('gogPreviewStats').classList.remove('hidden');
+
+        // Atualizar botão
+        btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR SELECIONADOS';
+        btn.onclick = () => handleGogGalaxyImport();
+        btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+        btn.disabled = false;
+
+        showToast(`${gogAvailablePlatforms.reduce((a, p) => a + p.count, 0)} jogos encontrados!`, 'success');
+
+    } catch (error) {
+        console.error('Erro ao parsear JSON:', error);
+        showToast('JSON inválido. Verifique o formato do arquivo.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
+    }
+};
+
+// Atualiza opções do dropdown de deletar plataforma
+const updateGogDeletePlatformOptions = () => {
+    const select = document.getElementById('gogDeletePlatformSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione uma plataforma</option>';
+
+    const platformTags = [
+        { value: 'Xbox', label: '🟢 Xbox' },
+        { value: 'Epic Games', label: '⚫ Epic Games' },
+        { value: 'Steam', label: '🔵 Steam' },
+        { value: 'GOG', label: '🟣 GOG' },
+        { value: 'Origin', label: '🟠 Origin' },
+        { value: 'Ubisoft', label: '🔴 Ubisoft' },
+        { value: 'Battle.net', label: '🔵 Battle.net' },
+    ];
+
+    platformTags.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.value;
+        opt.textContent = p.label;
+        select.appendChild(opt);
+    });
+};
+
+// Renderiza checkboxes de seleção de plataformas
+const renderGogPlatformSelection = (platforms) => {
+    const container = document.getElementById('gogPlatformCheckboxes');
+
+    const platformIcons = {
+        'Xbox One': { icon: 'fa-xbox', color: '#107c10', bg: 'rgba(16, 124, 16, 0.2)' },
+        'Epic Games': { icon: 'fa-square', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.2)' },
+        'Steam': { icon: 'fa-steam', color: '#66c0f4', bg: 'rgba(102, 192, 244, 0.2)' },
+        'GOG': { icon: 'fa-compact-disc', color: '#86328a', bg: 'rgba(134, 50, 138, 0.2)' },
+        'Origin': { icon: 'fa-gamepad', color: '#f56c2d', bg: 'rgba(245, 108, 45, 0.2)' },
+        'Ubisoft': { icon: 'fa-gamepad', color: '#0070ff', bg: 'rgba(0, 112, 255, 0.2)' },
+        'Battle.net': { icon: 'fa-gamepad', color: '#148eff', bg: 'rgba(20, 142, 255, 0.2)' },
+    };
+
+    container.innerHTML = platforms.map(p => {
+        const config = platformIcons[p.name] || { icon: 'fa-gamepad', color: '#888', bg: 'rgba(100,100,100,0.2)' };
+        return `
+            <label class="platform-checkbox" style="
+                display: flex; 
+                align-items: center; 
+                gap: 8px; 
+                padding: 8px 12px; 
+                background: ${config.bg}; 
+                border: 1px solid ${config.color}60; 
+                border-radius: 8px; 
+                cursor: pointer;
+                transition: all 0.2s;
+                user-select: none;
+            " onmouseover="this.style.transform='scale(1.02)'; this.style.borderColor='${config.color}'" 
+               onmouseout="this.style.transform='scale(1)'; this.style.borderColor='${config.color}60'">
+                <input type="checkbox" 
+                    class="gog-platform-cb" 
+                    value="${p.name}" 
+                    checked 
+                    onchange="window.updateGogPreview()"
+                    style="width: 18px; height: 18px; accent-color: ${config.color}; cursor: pointer;">
+                <i class="fa-brands ${config.icon}" style="color: ${config.color}; font-size: 1.1rem;"></i>
+                <span style="color: #ddd; font-size: 0.85rem; font-weight: 500;">${p.name}</span>
+                <span style="color: #aaa; font-size: 0.75rem; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 10px; margin-left: auto;">${p.count}</span>
+            </label>
+        `;
+    }).join('');
+
+    // Atualizar preview inicial
+    window.updateGogPreview();
+};
+
+// Atualiza preview com base nas plataformas selecionadas
+window.updateGogPreview = async () => {
+    if (!gogGalaxyData) {
+        console.warn('updateGogPreview chamado sem dados carregados');
+        return;
+    }
+
+    const selectedPlatforms = Array.from(document.querySelectorAll('.gog-platform-cb:checked'))
+        .map(cb => cb.value);
+
+    // Atualizar stats mesmo se vazio
+    if (selectedPlatforms.length === 0) {
+        gogPreviewGames = [];
+        document.getElementById('gogStatTotal').textContent = '0';
+        document.getElementById('gogStatNew').textContent = '0';
+        document.getElementById('gogStatDuplicate').textContent = '0';
+        document.getElementById('gogStatSelected').textContent = '0';
+        return;
+    }
+
+    try {
+        gogPreviewGames = await GogImportService.getGogPreview(gogGalaxyData, selectedPlatforms);
+
+        const total = gogPreviewGames.length;
+        const newGames = gogPreviewGames.filter(g => !g.isDuplicate).length;
+        const duplicates = gogPreviewGames.filter(g => g.isDuplicate).length;
+        const selected = gogPreviewGames.filter(g => g.selected).length;
+
+        document.getElementById('gogStatTotal').textContent = total;
+        document.getElementById('gogStatNew').textContent = newGames;
+        document.getElementById('gogStatDuplicate').textContent = duplicates;
+        document.getElementById('gogStatSelected').textContent = selected;
+
+    } catch (error) {
+        console.error('Erro ao atualizar preview:', error);
+        showToast('Erro ao processar dados', 'error');
+    }
+};
+
+// Selecionar todos os jogos
+window.gogSelectAll = () => {
+    if (!gogPreviewGames || gogPreviewGames.length === 0) {
+        showToast('Carregue os dados primeiro', 'warning');
+        return;
+    }
+    gogPreviewGames.forEach(g => g.selected = true);
+    document.getElementById('gogStatSelected').textContent = gogPreviewGames.length;
+    showToast(`${gogPreviewGames.length} jogos selecionados`, 'info');
+};
+
+// Limpar seleção
+window.gogSelectNone = () => {
+    if (!gogPreviewGames || gogPreviewGames.length === 0) {
+        showToast('Carregue os dados primeiro', 'warning');
+        return;
+    }
+    gogPreviewGames.forEach(g => g.selected = false);
+    document.getElementById('gogStatSelected').textContent = '0';
+    showToast('Seleção limpa', 'info');
+};
+
+// Selecionar apenas jogos novos
+window.gogSelectNew = () => {
+    if (!gogPreviewGames || gogPreviewGames.length === 0) {
+        showToast('Carregue os dados primeiro', 'warning');
+        return;
+    }
+    gogPreviewGames.forEach(g => g.selected = !g.isDuplicate);
+    const selected = gogPreviewGames.filter(g => g.selected).length;
+    document.getElementById('gogStatSelected').textContent = selected;
+
+    if (selected === 0) {
+        showToast('Todos os jogos já estão na sua coleção!', 'info');
+    } else {
+        showToast(`${selected} jogos novos selecionados`, 'success');
+    }
+};
+
+// Handler para deletar jogos de uma plataforma específica
+window.handleDeleteGogPlatform = async () => {
+    const select = document.getElementById('gogDeletePlatformSelect');
+    const platformTag = select.value;
+
+    if (!platformTag) {
+        showToast('Selecione uma plataforma para remover', 'warning');
+        return;
+    }
+
+    const { user } = appStore.get();
+    if (!user) {
+        showToast('Faça login primeiro', 'error');
+        return;
+    }
+
+    const confirmMsg = `Isso irá REMOVER TODOS os jogos com a tag "${platformTag}" da sua coleção.\n\nTem certeza?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        showToast(`Buscando jogos ${platformTag}...`, 'info');
+
+        // Buscar jogos com essa tag
+        const { data: games, error: fetchError } = await supabase
+            .from('games')
+            .select('id, tags')
+            .eq('user_id', user.id);
+
+        if (fetchError) throw fetchError;
+
+        // Filtrar jogos que têm a tag da plataforma
+        const gamesToDelete = games.filter(g => {
+            if (!g.tags) return false;
+            const tags = Array.isArray(g.tags) ? g.tags : JSON.parse(g.tags || '[]');
+            return tags.includes(platformTag);
+        });
+
+        if (gamesToDelete.length === 0) {
+            showToast(`Nenhum jogo com tag "${platformTag}" encontrado`, 'info');
+            return;
+        }
+
+        showToast(`Removendo ${gamesToDelete.length} jogos ${platformTag}...`, 'info');
+
+        // Deletar em batches de 50 para evitar erro 400 (URL muito longa)
+        const BATCH_SIZE = 50;
+        let deletedCount = 0;
+
+        for (let i = 0; i < gamesToDelete.length; i += BATCH_SIZE) {
+            const batch = gamesToDelete.slice(i, i + BATCH_SIZE);
+            const batchIds = batch.map(g => g.id);
+
+            const { error: deleteError } = await supabase
+                .from('games')
+                .delete()
+                .in('id', batchIds);
+
+            if (deleteError) {
+                console.error(`Erro no batch ${i / BATCH_SIZE + 1}:`, deleteError);
+                throw deleteError;
+            }
+
+            deletedCount += batch.length;
+
+            // Feedback de progresso para muitos jogos
+            if (gamesToDelete.length > BATCH_SIZE) {
+                showToast(`Removidos ${deletedCount}/${gamesToDelete.length}...`, 'info');
+            }
+        }
+
+        showToast(`${deletedCount} jogos ${platformTag} removidos!`, 'success');
+
+        // Recarregar dados
+        await loadData(user.id);
+
+        // Reset select
+        select.value = '';
+
+    } catch (error) {
+        console.error('Erro ao remover jogos:', error);
+        showToast('Erro ao remover: ' + (error.message || 'erro desconhecido'), 'error');
+    }
+};
+
+// Importar jogos selecionados do GOG Galaxy
+const handleGogGalaxyImport = async () => {
+    const gamesToImport = gogPreviewGames.filter(g => g.selected);
+
+    if (gamesToImport.length === 0) {
+        showToast('Selecione pelo menos um jogo para importar', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btnStartImport');
+    const progressDiv = document.getElementById('importProgress');
+    const progressText = document.getElementById('importProgressText');
+
+    btn.disabled = true;
+    progressDiv.classList.remove('hidden');
+    progressText.textContent = `Importando ${gamesToImport.length} jogos...`;
+
+    try {
+        const count = await GogImportService.confirmGogImport(gamesToImport, (progress) => {
+            if (progress.stage === 'processing') {
+                progressText.textContent = `Processando (${progress.current}/${progress.total}): ${progress.game}`;
+            } else if (progress.stage === 'saving') {
+                progressText.textContent = 'Salvando no cofre...';
+            }
+        });
+
+        showToast(`${count} jogos importados com sucesso!`, 'success');
+
+        // Fechar modal e recarregar dados
+        document.getElementById('importModal').classList.add('hidden');
+
+        const { user } = appStore.get();
+        if (user) await loadData(user.id);
+
+        // Reset estado
+        resetGogGalaxyState();
+
+    } catch (error) {
+        console.error('Erro na importação:', error);
+        showToast('Erro na importação: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        progressDiv.classList.add('hidden');
+        btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
+        btn.style.background = '';
+        btn.onclick = () => handleGogGalaxyPreview();
+    }
+};
+
+
+// ===================================================================================================
 // CLEANUP FEED
 // ===================================================================================================
 
@@ -1862,6 +2307,158 @@ const detectSteamIdFromUrl = async (url) => {
     }
 
     return null;
+};
+
+// ===================================================================================================
+// SUBSCRIPTION & PRO FEATURES
+// ===================================================================================================
+
+// Carrega subscription do usuário
+const loadUserSubscription = async (userId) => {
+    if (!userId) return null;
+    userSubscription = await SubscriptionService.getStatus(userId);
+    updateProBadge();
+    return userSubscription;
+};
+
+// Atualiza badge PRO no header baseado no status da subscription
+const updateProBadge = () => {
+    const isPro = SubscriptionService.isPro(userSubscription);
+    const isTrialing = userSubscription?.status === 'trialing';
+
+    // Atualiza badge no dropdown do usuário (ui.js renderiza isso)
+    const userBadge = document.getElementById('userPlanBadge');
+    if (userBadge) {
+        if (isPro) {
+            if (isTrialing) {
+                const trialEnd = new Date(userSubscription.trial_ends_at);
+                const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
+                userBadge.textContent = `TRIAL (${daysLeft}d)`;
+                userBadge.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
+            } else {
+                userBadge.textContent = 'PRO';
+                userBadge.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            }
+        } else {
+            userBadge.textContent = 'SEJA PRO';
+            userBadge.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+        }
+    }
+
+    // Atualiza também o botão separado no header (se existir)
+    const btn = document.getElementById('proBadgeBtn');
+    const text = document.getElementById('proBadgeText');
+    if (btn && text) {
+        btn.style.display = 'flex';
+        if (isPro) {
+            if (isTrialing) {
+                const trialEnd = new Date(userSubscription.trial_ends_at);
+                const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
+                text.textContent = `TRIAL (${daysLeft}d)`;
+                btn.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
+            } else {
+                text.textContent = 'PRO';
+                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            }
+        } else {
+            text.textContent = 'SEJA PRO';
+            btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+        }
+    }
+
+    console.log('[Subscription] Badge atualizado - isPro:', isPro, 'isTrialing:', isTrialing);
+};
+
+// Mostra modal de upgrade com feature específica
+window.showUpgradeModal = (featureName = null) => {
+    const modal = document.getElementById('upgradeModal');
+    const blockedFeature = document.getElementById('upgradeBlockedFeature');
+    const featureNameEl = document.getElementById('upgradeFeatureName');
+
+    if (featureName) {
+        blockedFeature.classList.remove('hidden');
+        featureNameEl.textContent = featureName + ' é uma feature PRO';
+    } else {
+        blockedFeature.classList.add('hidden');
+    }
+
+    modal.classList.remove('hidden');
+};
+
+// Handler para upgrade (mensal ou anual)
+window.handleUpgrade = async (planType) => {
+    const { user } = appStore.get();
+    if (!user) {
+        showToast('Faça login primeiro', 'error');
+        return;
+    }
+
+    document.getElementById('upgradeModal').classList.add('hidden');
+
+    // Chama o checkout do serviço
+    await SubscriptionService.checkout(planType, user.email);
+};
+
+// Handler para iniciar trial
+window.handleStartTrial = async () => {
+    const { user } = appStore.get();
+    if (!user) {
+        showToast('Faça login primeiro', 'error');
+        return;
+    }
+
+    // Verifica se já usou trial
+    if (userSubscription && userSubscription.trial_ends_at) {
+        showToast('Você já utilizou o período de teste', 'warning');
+        return;
+    }
+
+    try {
+        await SubscriptionService.startTrial(user.id);
+        userSubscription = await SubscriptionService.getStatus(user.id);
+
+        showToast('🎉 Trial de 7 dias ativado! Aproveite todas as features PRO', 'success');
+        document.getElementById('upgradeModal').classList.add('hidden');
+
+        updateProBadge();
+    } catch (error) {
+        console.error('Erro ao iniciar trial:', error);
+        showToast('Erro ao iniciar trial', 'error');
+    }
+};
+
+// Verifica se pode acessar feature PRO
+window.checkProFeature = async (featureName, displayName) => {
+    const { user } = appStore.get();
+    if (!user) {
+        showToast('Faça login primeiro', 'error');
+        return false;
+    }
+
+    const canAccess = await SubscriptionService.canAccess(user.id, featureName);
+
+    if (!canAccess) {
+        window.showUpgradeModal(displayName);
+        return false;
+    }
+
+    return true;
+};
+
+// Verifica limite de jogos
+window.checkGameLimit = async () => {
+    const { user, games } = appStore.get();
+    if (!user) return false;
+
+    const canAdd = await SubscriptionService.checkGameLimit(user.id, games.length);
+
+    if (!canAdd) {
+        window.showUpgradeModal('Jogos ilimitados');
+        showToast('Limite de 50 jogos atingido. Seja PRO para adicionar mais!', 'warning');
+        return false;
+    }
+
+    return true;
 };
 
 document.addEventListener('DOMContentLoaded', init);

@@ -533,7 +533,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                 <!-- User Dropdown Area -->
                  <div style="text-align:right; line-height:1.2; position:relative; cursor:pointer" onclick="document.getElementById('userDropdown').classList.toggle('hidden')">
                     <span class="user-name" style="display:block; font-size:0.9rem; color:#fff">${displayNick.toUpperCase()} <i class="fa-solid fa-caret-down" style="font-size:0.7rem; color:#666; margin-left:3px"></i></span>
-                    <small style="color:var(--primary); font-size:0.65rem; font-weight:bold">PRO MEMBER</small>
+                    <small id="userPlanBadge" onclick="event.stopPropagation(); window.showUpgradeModal()" style="cursor:pointer; font-size:0.65rem; font-weight:bold; padding:2px 6px; border-radius:4px; background:linear-gradient(135deg, #f59e0b, #d97706); color:white;">SEJA PRO</small>
                     
                     <!-- Simple Dropdown Menu -->
                     <div id="userDropdown" class="hidden glass-panel" style="position:absolute; top:40px; right:0; width:160px; padding:5px; background:#141416; border:1px solid rgba(255,255,255,0.1); z-index:9999; text-align:left">

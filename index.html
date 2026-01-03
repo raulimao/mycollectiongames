@@ -69,7 +69,27 @@
             </div>
 
             <div class="user-profile">
-                <div id="headerActions" style="display:flex; gap:10px; align-items:center;"></div>
+                <div id="headerActions" style="display:flex; gap:10px; align-items:center;">
+                    <!-- Botão PRO / Badge de Status -->
+                    <button id="proBadgeBtn" onclick="window.showUpgradeModal()" style="
+                        display: none;
+                        background: linear-gradient(135deg, #f59e0b, #d97706);
+                        border: none;
+                        color: white;
+                        padding: 6px 12px;
+                        border-radius: 20px;
+                        font-size: 0.75rem;
+                        font-weight: bold;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                        transition: all 0.2s;
+                    ">
+                        <i class="fa-solid fa-crown"></i>
+                        <span id="proBadgeText">SEJA PRO</span>
+                    </button>
+                </div>
                 <img id="userAvatar" class="avatar-img" src="" alt="User" style="display:none">
                 <div id="authActions" style="display: flex; align-items: center; gap: 10px;"></div>
             </div>
@@ -561,12 +581,11 @@
             <div style="padding: 20px;">
                 <!-- Platform Selector -->
                 <div class="input-group" style="margin-bottom: 20px;">
-                    <label>Plataforma</label>
-                    <select id="importPlatform" class="styled-select">
+                    <label>Método de Importação</label>
+                    <select id="importPlatform" class="styled-select"
+                        onchange="window.handleImportPlatformChange(this.value)">
                         <option value="steam">Steam (Web API)</option>
-                        <option value="gog" disabled>GOG API (Em breve)</option>
-                        <option value="epic" disabled>Epic Games API (Em breve)</option>
-                        <option value="amazon" disabled>Amazon Gaming (Em breve)</option>
+                        <option value="goggalaxy">GOG Galaxy 2.0 (Multi-plataforma)</option>
                     </select>
                 </div>
 
@@ -651,6 +670,104 @@
                     </div>
                 </div>
 
+                <!-- GOG Galaxy Configuration -->
+                <div id="gogGalaxyConfig" class="hidden">
+                    <div
+                        style="background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1)); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+                        <h4 style="color: #a78bfa; margin: 0 0 10px 0; font-size: 0.9rem;">
+                            <i class="fa-solid fa-database"></i> GOG Galaxy 2.0 - Importação Multi-Plataforma
+                        </h4>
+                        <p style="color: #ccc; font-size: 0.8rem; margin: 0 0 10px 0;">
+                            Importe jogos de <strong>Xbox, Epic Games, Steam, GOG</strong> e outras plataformas
+                            conectadas ao GOG Galaxy.
+                        </p>
+                        <div
+                            style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; font-size: 0.75rem; color: #888;">
+                            <strong style="color: #60a5fa;">Como usar:</strong><br>
+                            1. Execute o script <code
+                                style="background:#333;padding:2px 5px;border-radius:3px">gog_report.py</code> na pasta
+                            scripts<br>
+                            2. Abra o arquivo <code
+                                style="background:#333;padding:2px 5px;border-radius:3px">gog_galaxy_report.json</code>
+                            gerado<br>
+                            3. Cole o conteúdo abaixo ou faça upload do arquivo
+                        </div>
+                    </div>
+
+                    <!-- JSON Input Area -->
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <label style="display: flex; justify-content: space-between; align-items: center;">
+                            <span><i class="fa-solid fa-code"></i> JSON do Relatório GOG Galaxy</span>
+                            <label for="gogFileUpload"
+                                style="cursor: pointer; color: var(--primary); font-size: 0.8rem;">
+                                <i class="fa-solid fa-upload"></i> Upload Arquivo
+                            </label>
+                        </label>
+                        <input type="file" id="gogFileUpload" accept=".json" style="display: none;"
+                            onchange="window.handleGogFileUpload(this)">
+                        <textarea id="gogJsonInput"
+                            style="width: 100%; height: 120px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #ccc; padding: 10px; font-family: monospace; font-size: 0.75rem; resize: vertical;"
+                            placeholder='Cole aqui o conteúdo do arquivo gog_galaxy_report.json...'></textarea>
+                    </div>
+
+                    <!-- Platform Selection (appears after JSON is loaded) -->
+                    <div id="gogPlatformSelection" class="hidden" style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 10px; font-size: 0.85rem; color: #ccc;">
+                            <i class="fa-solid fa-filter"></i> Selecione as plataformas para importar:
+                        </label>
+                        <div id="gogPlatformCheckboxes" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <!-- Checkboxes will be generated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div id="gogQuickActions" class="hidden" style="display: flex; gap: 8px; margin-bottom: 15px;">
+                        <button type="button" onclick="window.gogSelectAll()" class="btn-small"
+                            style="flex: 1; font-size: 0.75rem;">
+                            <i class="fa-solid fa-check-double"></i> Selecionar Todos
+                        </button>
+                        <button type="button" onclick="window.gogSelectNone()" class="btn-small"
+                            style="flex: 1; font-size: 0.75rem;">
+                            <i class="fa-solid fa-xmark"></i> Limpar Seleção
+                        </button>
+                        <button type="button" onclick="window.gogSelectNew()" class="btn-small"
+                            style="flex: 1; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">
+                            <i class="fa-solid fa-sparkles"></i> Só Novos
+                        </button>
+                    </div>
+
+                    <!-- Preview Stats -->
+                    <div id="gogPreviewStats" class="hidden"
+                        style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-around; text-align: center;">
+                            <div>
+                                <div id="gogStatTotal"
+                                    style="font-size: 1.5rem; font-weight: bold; color: var(--primary); font-family: var(--font-num);">
+                                    0</div>
+                                <div style="font-size: 0.7rem; color: #888;">Total</div>
+                            </div>
+                            <div>
+                                <div id="gogStatNew"
+                                    style="font-size: 1.5rem; font-weight: bold; color: var(--success); font-family: var(--font-num);">
+                                    0</div>
+                                <div style="font-size: 0.7rem; color: #888;">Novos</div>
+                            </div>
+                            <div>
+                                <div id="gogStatDuplicate"
+                                    style="font-size: 1.5rem; font-weight: bold; color: #f59e0b; font-family: var(--font-num);">
+                                    0</div>
+                                <div style="font-size: 0.7rem; color: #888;">Duplicados</div>
+                            </div>
+                            <div>
+                                <div id="gogStatSelected"
+                                    style="font-size: 1.5rem; font-weight: bold; color: #3b82f6; font-family: var(--font-num);">
+                                    0</div>
+                                <div style="font-size: 0.7rem; color: #888;">Selecionados</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Progress Indicator -->
                 <div id="importProgress" class="hidden" style="margin: 20px 0;">
                     <div
@@ -678,15 +795,158 @@
                     <button id="btnStartImport" class="btn-primary" style="width: 100%;">
                         <i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA
                     </button>
-                    <button onclick="window.handleResetSteam()" class="btn-danger" style="width: 100%;">
-                        <i class="fa-solid fa-trash"></i> REMOVER JOGOS STEAM
-                    </button>
+
+                    <!-- Botão de deletar para Steam -->
+                    <div id="steamDeleteSection">
+                        <button onclick="window.handleResetSteam()" class="btn-danger" style="width: 100%;">
+                            <i class="fa-solid fa-trash"></i> REMOVER JOGOS STEAM
+                        </button>
+                    </div>
+
+                    <!-- Botão de deletar para GOG Galaxy (aparece após carregar) -->
+                    <div id="gogDeleteSection" class="hidden">
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 5px;">
+                            <label style="display: block; margin-bottom: 8px; font-size: 0.8rem; color: #888;">
+                                <i class="fa-solid fa-trash-can"></i> Remover jogos importados:
+                            </label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <select id="gogDeletePlatformSelect" class="styled-select"
+                                    style="flex: 1; min-width: 150px;">
+                                    <option value="">Selecione uma plataforma</option>
+                                </select>
+                                <button onclick="window.handleDeleteGogPlatform()" class="btn-danger"
+                                    style="padding: 8px 16px;">
+                                    <i class="fa-solid fa-trash"></i> REMOVER
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+
+    <!-- MODAL: UPGRADE PRO -->
+    <div id="upgradeModal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header"
+                style="background: linear-gradient(135deg, #f59e0b, #d97706); text-align: center; padding: 25px;">
+                <h2 style="margin: 0; font-size: 1.8rem;">
+                    <i class="fa-solid fa-crown"></i> GameVault PRO
+                </h2>
+                <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 0.9rem;">
+                    Desbloqueie todo o potencial da sua coleção
+                </p>
+            </div>
+
+            <div style="padding: 25px;">
+                <!-- Feature que bloqueou -->
+                <div id="upgradeBlockedFeature" class="hidden"
+                    style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: center;">
+                    <i class="fa-solid fa-lock" style="color: #ef4444;"></i>
+                    <span id="upgradeFeatureName" style="color: #ef4444; font-weight: 600;"></span>
+                </div>
+
+                <!-- Features PRO -->
+                <div style="margin-bottom: 25px;">
+                    <h4 style="color: #f59e0b; margin: 0 0 15px 0; font-size: 0.85rem;">
+                        <i class="fa-solid fa-sparkles"></i> TUDO INCLUÍDO:
+                    </h4>
+                    <ul style="list-style: none; padding: 0; margin: 0; display: grid; gap: 10px;">
+                        <li style="display: flex; align-items: center; gap: 10px; color: #ccc;">
+                            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+                            <span>Jogos <strong>ilimitados</strong> na coleção</span>
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px; color: #ccc;">
+                            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+                            <span>Dashboard financeiro completo</span>
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px; color: #ccc;">
+                            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+                            <span>Importação GOG Galaxy & Epic Games</span>
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px; color: #ccc;">
+                            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+                            <span>Alertas de preço personalizados</span>
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px; color: #ccc;">
+                            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+                            <span>Backup automático na nuvem</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Pricing Cards -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                    <!-- Mensal -->
+                    <button onclick="window.handleUpgrade('monthly')" class="pricing-card" style="
+                        background: rgba(255,255,255,0.05);
+                        border: 2px solid rgba(255,255,255,0.1);
+                        border-radius: 12px;
+                        padding: 15px;
+                        text-align: center;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                    ">
+                        <div style="font-size: 0.75rem; color: #888; margin-bottom: 5px;">MENSAL</div>
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #fff;">R$ 9,90</div>
+                        <div style="font-size: 0.7rem; color: #666;">/mês</div>
+                    </button>
+
+                    <!-- Anual -->
+                    <button onclick="window.handleUpgrade('annual')" class="pricing-card" style="
+                        background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1));
+                        border: 2px solid #f59e0b;
+                        border-radius: 12px;
+                        padding: 15px;
+                        text-align: center;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        position: relative;
+                    ">
+                        <div
+                            style="position: absolute; top: -10px; right: 10px; background: #10b981; color: white; font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; font-weight: bold;">
+                            MELHOR OFERTA
+                        </div>
+                        <div style="font-size: 0.75rem; color: #f59e0b; margin-bottom: 5px;">ANUAL</div>
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #fff;">R$ 99</div>
+                        <div style="font-size: 0.7rem; color: #10b981;">2 meses grátis!</div>
+                    </button>
+                </div>
+
+                <!-- Trial -->
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <button onclick="window.handleStartTrial()" style="
+                        background: transparent;
+                        border: 1px dashed rgba(255,255,255,0.2);
+                        color: #888;
+                        padding: 10px 20px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 0.85rem;
+                        transition: all 0.2s;
+                    ">
+                        <i class="fa-solid fa-gift"></i> Testar grátis por 7 dias
+                    </button>
+                </div>
+
+                <!-- Fechar -->
+                <button onclick="document.getElementById('upgradeModal').classList.add('hidden')" style="
+                    width: 100%;
+                    background: transparent;
+                    border: none;
+                    color: #666;
+                    padding: 10px;
+                    cursor: pointer;
+                    font-size: 0.8rem;
+                ">
+                    Continuar no plano gratuito
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- NFT SOCIAL CARD HIDDEN -->
 
