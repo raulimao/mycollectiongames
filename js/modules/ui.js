@@ -189,10 +189,9 @@ export const renderApp = (state) => {
     renderGrid(visibleGames, isShared, filteredGames.length);
 
     // CHART DATA SOURCE FIX:
-    // If we are simply browsing (no search/filter), we want the chart to reflect the WHOLE collection.
-    // If we are filtering (e.g. "PlayStation 5"), we want the chart to reflect the filtered subset.
-    const isFiltering = state.searchTerm || state.activePlatform;
-    const chartData = (isFiltering || activeFilter !== 'collection') ? filteredGames : statsSource;
+    // ALWAYS use filteredGames (which represents the active Tab + Filters) for the chart.
+    // This ensures that "Collection" tab shows only Collection items, excluding Wishlist/Sold.
+    const chartData = filteredGames;
     renderChart(chartData, state.chartMode, activeFilter, statsSource); // 1st arg: data to visualize, 4th arg: global context (for DNA)
 
     renderXP(statsSource);
