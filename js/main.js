@@ -2822,6 +2822,7 @@ window.handleBulkSyncPlaytime = async (btnElement) => {
         }
 
         let updatedCount = 0;
+        let skipCount = 0;
         let errorCount = 0;
 
         showToast(`Iniciando sincronização de ${gamesToSync.length} jogos...`, 'info');
@@ -2830,8 +2831,15 @@ window.handleBulkSyncPlaytime = async (btnElement) => {
         for (let i = 0; i < gamesToSync.length; i++) {
             const game = gamesToSync[i];
 
+            // --- OPTIMIZATION: Check if already has HLTB data ---
+            const hasData = game.tags && game.tags.some(t => t.startsWith('Time:') || t.startsWith('hltb:'));
+            if (hasData) {
+                skipCount++;
+                continue;
+            }
+
             // Update button progress
-            if (btnElement) btnElement.innerHTML = `< i class="fa-solid fa-spinner fa-spin" ></i > ${i + 1}/${gamesToSync.length}`;
+            if (btnElement) btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${i + 1}/${gamesToSync.length}`;
 
             try {
                 // Initial delay to be nice to API
@@ -2879,7 +2887,7 @@ window.handleBulkSyncPlaytime = async (btnElement) => {
         appStore.setState({ games: [...games] }); // Trigger re-render
         renderApp(appStore.get());
 
-        showToast(`Sincronização concluída! ${updatedCount} atualizados. ${errorCount > 0 ? `(${errorCount} falhas)` : ''}`, 'success');
+        showToast(`Sincronização concluída! ${updatedCount} atualizados. ${skipCount > 0 ? `${skipCount} já sincronizados. ` : ''}${errorCount > 0 ? `(${errorCount} falhas)` : ''}`, 'success');
 
     } catch (e) {
         console.error(e);
