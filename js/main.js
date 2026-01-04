@@ -9,7 +9,7 @@ import { Diagnostics } from './modules/diagnostics.js';
 
 // Force global exposure
 window.GameVaultDebug = Diagnostics;
-import { renderApp, showToast, toggleModal, exportData, renderUserList } from './modules/ui.js';
+import { renderApp, showToast, toggleModal, exportData, renderUserList, applyAdvancedFilters } from './modules/ui.js';
 import { initMobileTouchHandlers, handleOrientationChange, initNetworkDetection } from './modules/mobile.js';
 
 let editingId = null;
@@ -506,163 +506,462 @@ const setupGlobalEvents = () => {
 
 // --- ADVANCED FILTERS SETUP ---
 const setupAdvancedFilters = () => {
-    // Initialize dynamic platform/status filters when games load
+    // 1. Initial Render & Listener for Data Changes
     appStore.subscribe((state) => {
         if (state.allGamesStats && state.allGamesStats.length > 0) {
-            initializePlatformFilters(state.allGamesStats);
-            initializeStatusFilters(state.allGamesStats);
+            // First, ensure all buttons exist based on FULL dataset
+            renderFacetButtons(state.allGamesStats, 'platformFilters', 'platform');
+            renderFacetButtons(state.allGamesStats, 'statusFilters', 'status');
+            renderFacetButtons(state.allGamesStats, 'genreFilters', 'genre');
+            renderFacetButtons(state.allGamesStats, 'subgenreFilters', 'subgenre');
+
+            // Then, trigger an initial update to set correct visibility based on current filters
+            updateFacets();
         }
     });
 
-    // Range Sliders
-    const mcMin = document.getElementById('filterMcMin');
-    const mcMax = document.getElementById('filterMcMax');
-    const priceMin = document.getElementById('filterPriceMin');
-    const priceMax = document.getElementById('filterPriceMax');
-
-    if (mcMin && mcMax) {
-        const updateMcRange = () => {
-            const min = parseInt(mcMin.value);
-            const max = parseInt(mcMax.value);
-            const display = document.getElementById('mcRangeDisplay');
-            if (display) display.textContent = `${min} - ${max}`;
-        };
-
-        mcMin.addEventListener('input', updateMcRange);
-        mcMax.addEventListener('input', updateMcRange);
-    }
-
-    if (priceMin && priceMax) {
-        const updatePriceRange = () => {
-            const min = parseInt(priceMin.value);
-            const max = parseInt(priceMax.value);
-            const display = document.getElementById('priceRangeDisplay');
-            if (display) display.textContent = `R$ ${min} - R$ ${max}`;
-        };
-
-        priceMin.addEventListener('input', updatePriceRange);
-        priceMax.addEventListener('input', updatePriceRange);
-    }
-
-    // Tag Filters
-    document.querySelectorAll('.tag-filter-btn').forEach(btn => {
+    // 1b. Setup Tag Buttons (Static)
+    document.querySelectorAll('#tagFilters .tag-filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             btn.classList.toggle('active');
+            updateFacets();
         });
     });
 
-    // Apply Filters Button
+    // 3. Render Active Filter Chips (New Feature)
+    appStore.subscribe((state) => {
+        const container = document.getElementById('activeFiltersContainer');
+        if (!container) return;
+
+        const filters = state.advancedFilters;
+        if (!filters) {
+            container.innerHTML = '';
+            container.classList.add('hidden');
+            return;
+        }
+
+        container.innerHTML = '';
+        let hasChips = false;
+
+        const createChip = (text, removeCallback) => {
+            hasChips = true;
+            const chip = document.createElement('div');
+            chip.className = 'filter-chip badge';
+            chip.style.display = 'flex';
+            chip.style.alignItems = 'center';
+            chip.style.gap = '8px';
+            chip.style.background = 'rgba(255, 255, 255, 0.1)';
+            chip.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+            chip.style.cursor = 'pointer';
+            chip.innerHTML = `<span>${text}</span> <i class="fa-solid fa-xmark" style="font-size:0.8em; opacity:0.7"></i>`;
+            chip.addEventListener('click', removeCallback);
+            container.appendChild(chip);
+        };
+
+        // Arrays
+        filters.platforms?.forEach(p => createChip(`Plataforma: ${p}`, () => removeFilter('platforms', p)));
+        filters.statuses?.forEach(s => createChip(`Status: ${s}`, () => removeFilter('statuses', s)));
+        filters.genres?.forEach(g => createChip(`Gênero: ${g}`, () => removeFilter('genres', g)));
+        filters.subgenres?.forEach(s => createChip(`Sub: ${s}`, () => removeFilter('subgenres', s)));
+        filters.tags?.forEach(t => createChip(`${t}`, () => removeFilter('tags', t)));
+
+        // Ranges (Only if not default)
+        const isDefault = (arr, def) => !arr || (arr[0] === def[0] && arr[1] === def[1]);
+
+        if (!isDefault(filters.priceRange, [0, 10000])) {
+            createChip(`Preço: R$${filters.priceRange[0]} - R$${filters.priceRange[1]}`, () => resetRange('priceRange', [0, 10000]));
+        }
+        if (!isDefault(filters.metacriticRange, [0, 100])) {
+            createChip(`Metacritic: ${filters.metacriticRange[0]} - ${filters.metacriticRange[1]}`, () => resetRange('metacriticRange', [0, 100]));
+        }
+        if (!isDefault(filters.timeRange, [0, 500])) {
+            createChip(`Tempo: ${filters.timeRange[0]}h - ${filters.timeRange[1]}h`, () => resetRange('timeRange', [0, 500]));
+        }
+
+        if (hasChips) container.classList.remove('hidden');
+        else container.classList.add('hidden');
+    });
+
+    // Helper to remove filters via Chips
+    const removeFilter = (category, value) => {
+        const current = appStore.get().advancedFilters;
+        const newArr = current[category].filter(v => v !== value);
+        const newFilters = { ...current, [category]: newArr };
+        updateAndApply(newFilters);
+    };
+
+    const resetRange = (category, defaultVal) => {
+        const current = appStore.get().advancedFilters;
+        const newFilters = { ...current, [category]: defaultVal };
+
+        // Also update DOM inputs to reflect reset!
+        if (category === 'priceRange') {
+            setVal('filterPriceMin', 0); setVal('filterPriceMax', 10000);
+            setVal('inputPriceMinNumber', 0); setVal('inputPriceMaxNumber', 10000);
+        } else if (category === 'metacriticRange') {
+            setVal('filterMcMin', 0); setVal('filterMcMax', 100);
+            setVal('inputMcMinNumber', 0); setVal('inputMcMaxNumber', 100);
+        } else if (category === 'timeRange') {
+            setVal('filterTimeMin', 0); setVal('filterTimeMax', 500);
+            setVal('inputTimeMinNumber', 0); setVal('inputTimeMaxNumber', 500);
+        }
+
+        updateAndApply(newFilters);
+    };
+
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new Event('input')); } };
+
+    const updateAndApply = (filters) => {
+        appStore.setState({ advancedFilters: filters, paginationLimit: 16 });
+        // Update DOM buttons state
+        updateFilterBadge(filters);
+        // Force re-render of facets to update active classes
+        setTimeout(() => {
+            // Reset all active classes first? No, we need to sync DOM with State.
+            // Ideally we should re-render buttons based on State active values.
+            // For now, let's just trigger a click or manually update class?
+            // Brute force sync:
+            const syncDOM = (cls, arr) => {
+                document.querySelectorAll(`.${cls}`).forEach(btn => {
+                    if (arr.includes(btn.dataset.value)) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                });
+            };
+            syncDOM('platform-filter-btn', filters.platforms);
+            syncDOM('status-filter-btn', filters.statuses);
+            syncDOM('genre-filter-btn', filters.genres);
+            syncDOM('subgenre-filter-btn', filters.subgenres);
+
+            // Sync tags (different selector)
+            document.querySelectorAll('#tagFilters .tag-filter-btn').forEach(btn => {
+                if (filters.tags && filters.tags.includes(btn.dataset.tag)) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+
+            updateFacets();
+        }, 50);
+    };
+
+    // 2. Bind Listeners to Inputs (Reactive Updates)
+    const bindReactive = (id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateFacets);
+    };
+
+    ['filterMcMin', 'filterMcMax', 'filterPriceMin', 'filterPriceMax', 'filterTimeMin', 'filterTimeMax', 'inputTimeMinNumber', 'inputTimeMaxNumber', 'inputMcMinNumber', 'inputMcMaxNumber', 'inputPriceMinNumber', 'inputPriceMaxNumber'].forEach(bindReactive);
+
+    // Range Display Updaters
+    // Range Display Updaters
+    const rangeUpdate = (minId, maxId, displayId, prefix = '', suffix = '') => {
+        const min = document.getElementById(minId);
+        const max = document.getElementById(maxId);
+        const disp = document.getElementById(displayId);
+        if (min && max && disp) {
+            const update = () => disp.textContent = `${prefix}${min.value}${suffix} - ${prefix}${max.value}${suffix}`;
+            min.addEventListener('input', update);
+            max.addEventListener('input', update);
+        }
+    };
+    rangeUpdate('filterMcMin', 'filterMcMax', 'mcRangeDisplay');
+    rangeUpdate('filterPriceMin', 'filterPriceMax', 'priceRangeDisplay', 'R$ ');
+
+    // Generic Range Sync (Slider <-> Number)
+    const setupRangeSync = (sliderMinId, sliderMaxId, inputMinId, inputMaxId, limit) => {
+        const sMin = document.getElementById(sliderMinId);
+        const sMax = document.getElementById(sliderMaxId);
+        const iMin = document.getElementById(inputMinId);
+        const iMax = document.getElementById(inputMaxId);
+
+        if (sMin && sMax && iMin && iMax) {
+            // Slider -> Number
+            const updateFromSlider = () => {
+                iMin.value = sMin.value;
+                iMax.value = sMax.value;
+            };
+            sMin.addEventListener('input', updateFromSlider);
+            sMax.addEventListener('input', updateFromSlider);
+
+            // Number -> Slider
+            const updateFromNumber = () => {
+                const vMin = parseInt(iMin.value) || 0;
+                const vMax = parseInt(iMax.value) || 0;
+                sMin.value = Math.min(vMin, limit);
+                sMax.value = Math.min(vMax, limit);
+            };
+            iMin.addEventListener('input', updateFromNumber);
+            iMax.addEventListener('input', updateFromNumber);
+        }
+    };
+
+    setupRangeSync('filterMcMin', 'filterMcMax', 'inputMcMinNumber', 'inputMcMaxNumber', 100);
+    setupRangeSync('filterPriceMin', 'filterPriceMax', 'inputPriceMinNumber', 'inputPriceMaxNumber', 10000);
+    setupRangeSync('filterTimeMin', 'filterTimeMax', 'inputTimeMinNumber', 'inputTimeMaxNumber', 500);
+
+    // Filter Search Logic (Genre & Subgenre)
+    const setupFilterSearch = (inputId, containerId) => {
+        const input = document.getElementById(inputId);
+        const container = document.getElementById(containerId);
+        if (input && container) {
+            input.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                Array.from(container.children).forEach(btn => {
+                    const val = btn.dataset.value.toLowerCase();
+                    if (val.includes(query)) {
+                        btn.classList.remove('hidden-by-search');
+                        // Use existing display logic (updateFacets will handle opacity/display based on counts)
+                        // But we need to force hide if search doesn't match
+                        // So we toggle a specific class 'hidden-by-search' which forces display:none via CSS or inline override
+                        btn.style.display = btn.classList.contains('active') || btn.style.opacity !== '0.5' ? 'inline-block' : 'none';
+                        // Re-run updateFacets logic locally or just toggle visibility? 
+                        // Simpler: Just toggle visibility directly. 
+                        // If mismatched query, force hide. If matched, defer to updateFacets logic (which might hide it if count is 0).
+                        // To allow this collaboration, let's use a class.
+                    } else {
+                        btn.classList.add('hidden-by-search');
+                        btn.style.display = 'none';
+                    }
+                });
+
+                // If query is valid, we must ensure matched items are visible even if count is 0? 
+                // No, standard logic: Filter the LIST of buttons.
+                // Re-trigger updateFacets to ensure correct "Available" visibility is respected?
+                // No, updateFacets controls "Is this valid for current game filter?".
+                // Search controls "Can I see this button?".
+                // So Search is an AND condition on top of updateFacets.
+                updateFacets();
+            });
+        }
+    };
+    setupFilterSearch('genreSearch', 'genreFilters');
+    setupFilterSearch('subgenreSearch', 'subgenreFilters');
+
+    // Filter Search Logic (Genre & Subgenre) -- Previous Code --
+
+    // Accordion Logic
+    const setupAccordions = () => {
+        document.querySelectorAll('.filter-group label').forEach(label => {
+            const nextElem = label.nextElementSibling;
+            if (nextElem) {
+                label.style.cursor = 'pointer';
+                label.innerHTML += ' <i class="fa-solid fa-chevron-down" style="float:right; font-size:0.8em; margin-top:2px;"></i>';
+
+                label.addEventListener('click', () => {
+                    const isHidden = nextElem.style.display === 'none';
+                    nextElem.style.display = isHidden ? (nextElem.dataset.display || 'block') : 'none';
+
+                    // Toggle Icon
+                    const icon = label.querySelector('i');
+                    if (icon) icon.className = isHidden ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right';
+
+                    if (!isHidden) nextElem.dataset.display = getComputedStyle(nextElem).display;
+                });
+            }
+        });
+    };
+    // Run once after DOM settles or immediately
+    setTimeout(setupAccordions, 100);
+
+    // Tag Filters (Manual Button Toggles are handled by delegation in renderFacetButtons)
+
+    // Apply Filters Button (Updates Main State)
     const btnApply = document.getElementById('btnApplyFilters');
     if (btnApply) {
         btnApply.addEventListener('click', () => {
-            const filters = {
-                platforms: getSelectedPlatforms(),
-                statuses: getSelectedStatuses(),
-                tags: getSelectedTags(),
-                priceRange: [
-                    parseInt(priceMin?.value || 0),
-                    parseInt(priceMax?.value || 5000)
-                ],
-                metacriticRange: [
-                    parseInt(mcMin?.value || 0),
-                    parseInt(mcMax?.value || 100)
-                ],
-                sortBy: document.getElementById('filterSortBy')?.value || 'title'
-            };
-
+            const filters = getFiltersFromDOM();
             appStore.setState({ advancedFilters: filters, paginationLimit: 16 });
             updateFilterBadge(filters);
             showToast("Filtros aplicados!", "success");
         });
     }
 
-    // Clear Filters Button
+    // Clear Filters
     const btnClear = document.getElementById('btnClearFilters');
     if (btnClear) {
         btnClear.addEventListener('click', () => {
-            // Reset all filters
-            document.querySelectorAll('.tag-filter-btn.active').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.platform-filter-btn.active').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.status-filter-btn.active').forEach(btn => btn.classList.remove('active'));
+            // Clear inputs
+            document.querySelectorAll('.tag-filter-btn.active').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#tagFilters .tag-filter-btn.active').forEach(b => b.classList.remove('active'));
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            setVal('filterMcMin', 0); setVal('filterMcMax', 100);
+            setVal('inputMcMinNumber', 0); setVal('inputMcMaxNumber', 100);
 
-            if (mcMin) mcMin.value = 0;
-            if (mcMax) mcMax.value = 100;
-            if (priceMin) priceMin.value = 0;
-            if (priceMax) priceMax.value = 5000;
+            setVal('filterPriceMin', 0); setVal('filterPriceMax', 10000);
+            setVal('inputPriceMinNumber', 0); setVal('inputPriceMaxNumber', 10000);
 
-            const sortBy = document.getElementById('filterSortBy');
-            if (sortBy) sortBy.value = 'title';
+            setVal('filterTimeMin', 0); setVal('filterTimeMax', 500);
+            setVal('inputTimeMinNumber', 0); setVal('inputTimeMaxNumber', 500);
+            setVal('filterSortBy', 'title');
 
-            // Update displays
-            const mcDisplay = document.getElementById('mcRangeDisplay');
-            if (mcDisplay) mcDisplay.textContent = '0 - 100';
-            const priceDisplay = document.getElementById('priceRangeDisplay');
-            if (priceDisplay) priceDisplay.textContent = 'R$ 0 - R$ 5000';
+            // Reset Displays
+            const dispatch = (id) => document.getElementById(id)?.dispatchEvent(new Event('input'));
+            ['filterMcMin', 'filterPriceMin', 'filterTimeMin'].forEach(dispatch);
 
+            // Reset State & Facets
             appStore.setState({
-                advancedFilters: {
-                    platforms: [],
-                    statuses: [],
-                    tags: [],
-                    priceRange: [0, 5000],
-                    metacriticRange: [0, 100],
-                    sortBy: 'title'
-                },
+                advancedFilters: { platforms: [], statuses: [], genres: [], subgenres: [], tags: [], priceRange: [0, 10000], metacriticRange: [0, 100], timeRange: [0, 500], sortBy: 'title' },
                 paginationLimit: 16
             });
-
             updateFilterBadge(null);
+            updateFacets(); // Re-show all options
             showToast("Filtros limpos", "info");
         });
     }
 
-    // Sort dropdown - real-time
+    // Sort dropdown
     const sortSelect = document.getElementById('filterSortBy');
     if (sortSelect) {
         sortSelect.addEventListener('change', (e) => {
             const { advancedFilters } = appStore.get();
-            appStore.setState({
-                advancedFilters: { ...advancedFilters, sortBy: e.target.value }
-            });
+            appStore.setState({ advancedFilters: { ...advancedFilters, sortBy: e.target.value } });
         });
     }
 };
 
-const initializePlatformFilters = (games) => {
-    const container = document.getElementById('platformFilters');
-    if (!container || container.children.length > 0) return; // Already initialized
+// --- FACET LOGIC ---
 
-    const platforms = [...new Set(games.map(g => g.platform))].sort();
-    platforms.forEach(platform => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'tag-filter-btn platform-filter-btn';
-        btn.dataset.platform = platform;
-        btn.textContent = platform;
-        btn.addEventListener('click', () => btn.classList.toggle('active'));
-        container.appendChild(btn);
+// 1. Render Buttons (Ensure all options exist in DOM)
+const renderFacetButtons = (allGames, containerId, type) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Extract unique values and counts
+    const counts = new Map();
+    allGames.forEach(g => {
+        if (type === 'platform') {
+            counts.set(g.platform, (counts.get(g.platform) || 0) + 1);
+        } else if (type === 'status') {
+            counts.set(g.status, (counts.get(g.status) || 0) + 1);
+        } else if (type === 'genre' || type === 'subgenre') {
+            const prefix = type === 'genre' ? 'Genre:' : 'Sub:';
+            g.tags?.forEach(t => {
+                if (t.startsWith(prefix)) {
+                    const val = t.substring(prefix.length);
+                    counts.set(val, (counts.get(val) || 0) + 1);
+                }
+            });
+        }
     });
+
+    // Sort by Count (Desc) -> Name (Asc)
+    const sorted = [...counts.keys()].sort((a, b) => {
+        const countDiff = counts.get(b) - counts.get(a);
+        if (countDiff !== 0) return countDiff;
+        return a.localeCompare(b);
+    });
+
+    // Re-build ONLY if container empty
+    if (container.children.length === 0) {
+        sorted.forEach(val => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `tag-filter-btn ${type}-filter-btn`;
+            btn.dataset.value = val;
+            // Initial count (Total in collection)
+            btn.innerHTML = `${val} <span class="facet-count" style="font-size:0.85em; opacity:0.6; margin-left:4px;">(${counts.get(val)})</span>`;
+            // Bind Click -> Toggle Active -> Trigger Facet Update
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('active');
+                updateFacets();
+            });
+            container.appendChild(btn);
+        });
+    }
 };
 
-const initializeStatusFilters = (games) => {
-    const container = document.getElementById('statusFilters');
-    if (!container || container.children.length > 0) return; // Already initialized
+// 2. Update Visibility (The "Reactive" Part)
+const updateFacets = () => {
+    const allGames = appStore.get().allGamesStats || [];
+    const currentDOMFilters = getFiltersFromDOM();
 
-    const statuses = [...new Set(games.map(g => g.status))].filter(Boolean).sort();
-    statuses.forEach(status => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'tag-filter-btn status-filter-btn';
-        btn.dataset.status = status;
-        btn.textContent = status;
-        btn.addEventListener('click', () => btn.classList.toggle('active'));
-        container.appendChild(btn);
-    });
+    // Calculate what the result WOULD be with current DOM selection
+    const subset = applyAdvancedFilters(allGames, currentDOMFilters);
+
+    // Update Apply Button Text
+    const btnApply = document.getElementById('btnApplyFilters');
+    if (btnApply) {
+        btnApply.innerHTML = `<i class="fa-solid fa-filter"></i> VER ${subset.length} JOGOS`;
+    }
+
+    // Helper: Count frequencies in subset
+    const getCounts = (games, type) => {
+        const counts = new Map();
+        games.forEach(g => {
+            if (type === 'platform') {
+                counts.set(g.platform, (counts.get(g.platform) || 0) + 1);
+            } else if (type === 'status') {
+                counts.set(g.status, (counts.get(g.status) || 0) + 1);
+            } else {
+                const prefix = type === 'genre' ? 'Genre:' : 'Sub:';
+                g.tags?.forEach(t => {
+                    if (t.startsWith(prefix)) {
+                        const val = t.substring(prefix.length);
+                        counts.set(val, (counts.get(val) || 0) + 1);
+                    }
+                });
+            }
+        });
+        return counts;
+    };
+
+    const updateGroup = (containerId, type, countsMap) => {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        Array.from(container.children).forEach(btn => {
+            const val = btn.dataset.value;
+            const isActive = btn.classList.contains('active');
+            const count = countsMap.get(val) || 0;
+
+            // Logic: Show if Active OR Available. Hide if Inactive AND Unavailable (Count 0).
+            if (isActive || count > 0) {
+                btn.style.display = 'inline-block';
+
+                const countSpan = btn.querySelector('.facet-count');
+                if (countSpan) countSpan.textContent = `(${count})`;
+
+                if (count === 0 && !isActive) btn.style.opacity = '0.5';
+                else btn.style.opacity = '1';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+    };
+
+    updateGroup('platformFilters', 'platform', getCounts(subset, 'platform'));
+    updateGroup('statusFilters', 'status', getCounts(subset, 'status'));
+    updateGroup('genreFilters', 'genre', getCounts(subset, 'genre'));
+    updateGroup('subgenreFilters', 'subgenre', getCounts(subset, 'subgenre'));
+};
+
+const getFiltersFromDOM = () => {
+    // Helper to get active values
+    const getActive = (cls) => Array.from(document.querySelectorAll(`.${cls}.active`)).map(b => b.dataset.value);
+
+    return {
+        platforms: getActive('platform-filter-btn'),
+        statuses: getActive('status-filter-btn'),
+        genres: getActive('genre-filter-btn'),
+        subgenres: getActive('subgenre-filter-btn'),
+        tags: Array.from(document.querySelectorAll('#tagFilters .tag-filter-btn.active')).map(b => b.dataset.tag),
+        priceRange: [
+            parseInt(document.getElementById('inputPriceMinNumber')?.value || document.getElementById('filterPriceMin')?.value || 0),
+            parseInt(document.getElementById('inputPriceMaxNumber')?.value || document.getElementById('filterPriceMax')?.value || 5000)
+        ],
+        metacriticRange: [
+            parseInt(document.getElementById('inputMcMinNumber')?.value || document.getElementById('filterMcMin')?.value || 0),
+            parseInt(document.getElementById('inputMcMaxNumber')?.value || document.getElementById('filterMcMax')?.value || 100)
+        ],
+        timeRange: [
+            parseInt(document.getElementById('inputTimeMinNumber')?.value || document.getElementById('filterTimeMin')?.value || 0),
+            parseInt(document.getElementById('inputTimeMaxNumber')?.value || document.getElementById('filterTimeMax')?.value || 500)
+        ],
+        sortBy: document.getElementById('filterSortBy')?.value || 'title'
+    };
 };
 
 const getSelectedPlatforms = () => {
     return Array.from(document.querySelectorAll('.platform-filter-btn.active'))
-        .map(btn => btn.dataset.platform);
+        .map(btn => btn.dataset.value);
 };
 
 const getSelectedStatuses = () => {
@@ -670,9 +969,20 @@ const getSelectedStatuses = () => {
         .map(btn => btn.dataset.status);
 };
 
+const getSelectedGenres = () => {
+    return Array.from(document.querySelectorAll('.genre-filter-btn.active'))
+        .map(btn => btn.dataset.genre);
+};
+
+const getSelectedSubgenres = () => {
+    return Array.from(document.querySelectorAll('.subgenre-filter-btn.active'))
+        .map(btn => btn.dataset.subgenre);
+};
+
 const getSelectedTags = () => {
     return Array.from(document.querySelectorAll('.tag-filter-btn.active'))
-        .map(btn => btn.dataset.tag);
+        .map(btn => btn.dataset.tag)
+        .filter(Boolean); // Filter out undefined (platforms, genres, etc)
 };
 
 const updateFilterBadge = (filters) => {
@@ -686,6 +996,8 @@ const updateFilterBadge = (filters) => {
 
     const count = (filters.platforms?.length || 0) +
         (filters.statuses?.length || 0) +
+        (filters.genres?.length || 0) +
+        (filters.subgenres?.length || 0) +
         (filters.tags?.length || 0);
 
     if (count > 0) {
@@ -763,7 +1075,11 @@ const openGameModal = (gameId = null) => {
     document.getElementById('apiResults').classList.add('hidden');
     document.getElementById('soldGroup').classList.add('hidden');
     document.querySelectorAll('.tag-toggle').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tag-toggle').forEach(b => b.classList.remove('active'));
     document.getElementById('inputTags').value = '[]';
+    // Reset Auto Tags
+    const autoTagsInput = document.getElementById('inputAutoTags');
+    if (autoTagsInput) autoTagsInput.value = '[]';
     editingId = gameId;
 
     if (gameId) {
@@ -794,6 +1110,12 @@ const openGameModal = (gameId = null) => {
                     if (btn) btn.classList.add('active');
                 });
                 document.getElementById('inputTags').value = JSON.stringify(game.tags);
+                // Extract Playtime from tags (Time:Xh)
+                const timeTag = game.tags.find(t => t.startsWith('Time:'));
+                if (timeTag) {
+                    const hours = timeTag.replace('Time:', '').replace('h', '');
+                    document.getElementById('inputPlaytime').value = hours;
+                }
             }
             if (['Vendido', 'À venda'].includes(game.status)) document.getElementById('soldGroup').classList.remove('hidden');
 
@@ -880,7 +1202,23 @@ const handleFormSubmit = async (e) => {
             price_paid: pPaid,
             price_sold: pSold,
             image_url: document.getElementById('inputImage').value,
-            tags: JSON.parse(document.getElementById('inputTags').value || '[]'),
+            image_url: document.getElementById('inputImage').value,
+            // OLD: tags: JSON.parse(document.getElementById('inputTags').value || '[]'),
+            // NEW: Merge Manual Tags with Playtime & Auto-detected Genre/Sub tags
+            tags: (() => {
+                let manual = JSON.parse(document.getElementById('inputTags').value || '[]');
+                const auto = JSON.parse(document.getElementById('inputAutoTags')?.value || '[]');
+
+                // Handle Playtime
+                const playtime = document.getElementById('inputPlaytime').value;
+                manual = manual.filter(t => !t.startsWith('Time:')); // Remove old time tag
+                if (playtime && playtime > 0) {
+                    manual.push(`Time:${playtime}h`);
+                }
+
+                // Use Set to avoid duplicates if user edits twice
+                return [...new Set([...manual, ...auto])];
+            })(),
             metacritic: parseInt(document.getElementById('inputMetacritic')?.value) || null
         };
         if (editingId) await GameService.updateGame(editingId, data);
@@ -2077,20 +2415,48 @@ const setupRawgSearch = () => {
                         input.value = item.name;
                         document.getElementById('inputImage').value = item.background_image || '';
 
+                        // --- NEW: AUTO-TAGGING (GENRES & SUBGENRES) ---
+                        // We store these in a hidden input to merge on submit
+                        // Prefixes: "Genre:" for main genres, "Sub:" for tags (subgenres)
+                        let autoTags = [];
+
+                        if (item.genres && Array.isArray(item.genres)) {
+                            autoTags = autoTags.concat(item.genres.map(g => `Genre:${g.name}`));
+                        }
+
+                        // Use top 5 tags as subgenres to avoid clutter
+                        if (item.tags && Array.isArray(item.tags)) {
+                            const meaningfulTags = item.tags
+                                .filter(t => t.language === 'eng' || !t.language) // Filter garbage
+                                .slice(0, 5)
+                                .map(t => `Sub:${t.name}`);
+                            autoTags = autoTags.concat(meaningfulTags);
+                        }
+
+                        // --- NEW: AUTO-TAGGING (PLAYTIME) ---
+                        if (item.playtime && item.playtime > 0) {
+                            autoTags.push(`Time:${item.playtime}h`);
+                        }
+
+                        let autoTagsInput = document.getElementById('inputAutoTags');
+                        if (!autoTagsInput) {
+                            autoTagsInput = document.createElement('input');
+                            autoTagsInput.type = 'hidden';
+                            autoTagsInput.id = 'inputAutoTags';
+                            const form = document.getElementById('gameForm');
+                            if (form) form.appendChild(autoTagsInput);
+                        }
+                        autoTagsInput.value = JSON.stringify(autoTags);
+                        // -----------------------------------------------
+
                         // Store Metacritic score in hidden field
                         let metacriticInput = document.getElementById('inputMetacritic');
                         if (!metacriticInput) {
                             metacriticInput = document.createElement('input');
                             metacriticInput.type = 'hidden';
                             metacriticInput.id = 'inputMetacritic';
-                            // Assuming 'gameForm' is the parent element for the input fields
-                            // If not, adjust this to the correct parent element where the hidden input should be appended.
-                            const form = document.getElementById('gameForm') || document.querySelector('.modal-content'); // Fallback to modal-content
-                            if (form) {
-                                form.appendChild(metacriticInput);
-                            } else {
-                                console.warn("Could not find 'gameForm' or '.modal-content' to append inputMetacritic.");
-                            }
+                            const form = document.getElementById('gameForm');
+                            if (form) form.appendChild(metacriticInput);
                         }
                         metacriticInput.value = item.metacritic || '';
 
@@ -2479,5 +2845,11 @@ window.checkGameLimit = async () => {
 
     return true;
 };
+
+
+
+
+
+
 
 document.addEventListener('DOMContentLoaded', init);

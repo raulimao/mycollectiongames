@@ -198,7 +198,7 @@ export const renderApp = (state) => {
 };
 
 // --- ADVANCED FILTERS HELPER ---
-const applyAdvancedFilters = (games, filters) => {
+export const applyAdvancedFilters = (games, filters) => {
     if (!filters) return games;
 
     let filtered = [...games];
@@ -211,6 +211,22 @@ const applyAdvancedFilters = (games, filters) => {
     // Status Filter (multi-select)
     if (filters.statuses && filters.statuses.length > 0) {
         filtered = filtered.filter(g => filters.statuses.includes(g.status));
+    }
+
+    // Genre Filter (multi-select OR)
+    if (filters.genres && filters.genres.length > 0) {
+        filtered = filtered.filter(g => {
+            if (!g.tags || !Array.isArray(g.tags)) return false;
+            return filters.genres.some(genre => g.tags.includes(`Genre:${genre}`));
+        });
+    }
+
+    // Subgenre Filter (multi-select OR)
+    if (filters.subgenres && filters.subgenres.length > 0) {
+        filtered = filtered.filter(g => {
+            if (!g.tags || !Array.isArray(g.tags)) return false;
+            return filters.subgenres.some(sub => g.tags.includes(`Sub:${sub}`));
+        });
     }
 
     // Tags Filter
@@ -238,6 +254,20 @@ const applyAdvancedFilters = (games, filters) => {
             filtered = filtered.filter(g => {
                 if (!g.metacritic) return false; // Exclude games without rating
                 return g.metacritic >= min && g.metacritic <= max;
+            });
+        }
+    }
+
+    // Playtime Range
+    if (filters.timeRange) {
+        const [min, max] = filters.timeRange;
+        // Only apply if active
+        if (min > 0 || max < 500) {
+            filtered = filtered.filter(g => {
+                if (!g.tags) return false;
+                const timeTag = g.tags.find(t => t.startsWith('Time:'));
+                const hours = timeTag ? parseInt(timeTag.replace('Time:', '').replace('h', '')) : 0;
+                return hours >= min && hours <= max;
             });
         }
     }

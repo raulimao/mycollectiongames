@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <meta name="theme-color" content="#0a0a0c">
     <title>GameVault | Cyberpunk Edition</title>
+    <!-- Favicon: Game Controller Emoji -->
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -143,6 +146,8 @@
                     </button>
 
 
+
+
                     <button id="btnImport" class="btn-primary btn-icon" title="Importar Jogos (Steam)"
                         aria-label="Importar Jogos">
                         <i class="fa-solid fa-cloud-arrow-down"></i>
@@ -187,84 +192,161 @@
             </div>
 
             <div id="filtersContent" class="filters-content hidden" style="padding: 20px;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <!-- NEW: GRID LAYOUT FOR FILTERS -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-items: start;">
 
-                    <!-- Sort Options -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">ORDENAR
-                            POR</label>
-                        <select id="filterSortBy" class="filter-select"
-                            style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-size: 0.85rem;">
-                            <option value="title">Título (A-Z)</option>
-                            <option value="title-desc">Título (Z-A)</option>
-                            <option value="date">Mais Recentes</option>
-                            <option value="date-desc">Mais Antigos</option>
-                            <option value="price">Preço (Menor)</option>
-                            <option value="price-desc">Preço (Maior)</option>
-                            <option value="metacritic">Rating (Maior)</option>
-                            <option value="metacritic-desc">Rating (Menor)</option>
-                        </select>
-                    </div>
+                    <!-- COLUMN 1: METRICS & SORT -->
+                    <div style="grid-column: span 1; display:flex; flex-direction:column; gap:15px">
 
-                    <!-- Metacritic Range -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">
-                            METACRITIC <span id="mcRangeDisplay" style="color: var(--primary);">0 - 100</span>
-                        </label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="range" id="filterMcMin" min="0" max="100" value="0" style="flex: 1;">
-                            <input type="range" id="filterMcMax" min="0" max="100" value="100" style="flex: 1;">
+                        <!-- Sort Options -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">ORDENAR
+                                POR</label>
+                            <select id="filterSortBy" class="filter-select"
+                                style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-size: 0.85rem;">
+                                <option value="title">Título (A-Z)</option>
+                                <option value="title-desc">Título (Z-A)</option>
+                                <option value="date">Mais Recentes</option>
+                                <option value="date-desc">Mais Antigos</option>
+                                <option value="price">Preço (Menor)</option>
+                                <option value="price-desc">Preço (Maior)</option>
+                                <option value="metacritic">Rating (Maior)</option>
+                                <option value="metacritic-desc">Rating (Menor)</option>
+                            </select>
                         </div>
+
+                        <!-- Metacritic Range -->
+                        <div class="filter-group">
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">METACRITIC</label>
+                                <div style="display:flex; gap:5px; align-items:center;">
+                                    <input type="number" id="inputMcMinNumber" value="0" min="0" max="100"
+                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                    <span style="color:#666">-</span>
+                                    <input type="number" id="inputMcMaxNumber" value="100" min="0" max="100"
+                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="range" id="filterMcMin" min="0" max="100" value="0" style="flex: 1;">
+                                <input type="range" id="filterMcMax" min="0" max="100" value="100" style="flex: 1;">
+                            </div>
+                        </div>
+
+                        <!-- Price Range -->
+                        <div class="filter-group">
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">PREÇO (R$)</label>
+                                <div style="display:flex; gap:5px; align-items:center;">
+                                    <input type="number" id="inputPriceMinNumber" value="0" min="0" max="10000"
+                                        style="width:60px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                    <span style="color:#666">-</span>
+                                    <input type="number" id="inputPriceMaxNumber" value="10000" min="0" max="10000"
+                                        style="width:60px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="range" id="filterPriceMin" min="0" max="10000" step="50" value="0"
+                                    style="flex: 1;">
+                                <input type="range" id="filterPriceMax" min="0" max="10000" step="50" value="10000"
+                                    style="flex: 1;">
+                            </div>
+                        </div>
+
+                        <!-- Playtime Range -->
+                        <div class="filter-group">
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">TEMPO (Horas)</label>
+                                <div style="display:flex; gap:5px; align-items:center;">
+                                    <input type="number" id="inputTimeMinNumber" value="0" min="0" max="9999"
+                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                    <span style="color:#666">-</span>
+                                    <input type="number" id="inputTimeMaxNumber" value="500" min="0" max="9999"
+                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="range" id="filterTimeMin" min="0" max="500" step="1" value="0"
+                                    style="flex: 1;">
+                                <input type="range" id="filterTimeMax" min="0" max="500" step="1" value="500"
+                                    style="flex: 1;">
+                            </div>
+                        </div>
+
                     </div>
 
-                    <!-- Price Range -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">
-                            PREÇO <span id="priceRangeDisplay" style="color: var(--primary);">R$ 0 - R$ 5000</span>
-                        </label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="range" id="filterPriceMin" min="0" max="5000" step="50" value="0"
-                                style="flex: 1;">
-                            <input type="range" id="filterPriceMax" min="0" max="5000" step="50" value="5000"
-                                style="flex: 1;">
+                    <!-- COLUMN 2: ATTRIBUTES (Platform, Status, Tags) -->
+                    <div style="grid-column: span 1; display:flex; flex-direction:column; gap:15px">
+
+                        <!-- Status -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">STATUS</label>
+                            <div id="statusFilters" class="checkbox-group"
+                                style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                <!-- Generated dynamically -->
+                            </div>
                         </div>
+
+                        <!-- Platforms -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">PLATAFORMAS</label>
+                            <div id="platformFilters" class="checkbox-group"
+                                style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                <!-- Generated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Tags -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">TAGS</label>
+                            <div id="tagFilters" class="checkbox-group"
+                                style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                <button type="button" class="tag-filter-btn" data-tag="Digital">☁️ Digital</button>
+                                <button type="button" class="tag-filter-btn" data-tag="Lacrado">✨ Lacrado</button>
+                                <button type="button" class="tag-filter-btn" data-tag="Completo">📦 Completo</button>
+                                <button type="button" class="tag-filter-btn" data-tag="Usado">💿 Usado</button>
+                                <button type="button" class="tag-filter-btn" data-tag="Novo">Novo</button>
+                            </div>
+                        </div>
+
                     </div>
 
-                    <!-- Platforms (Multi-select) -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">PLATAFORMAS</label>
-                        <div id="platformFilters" class="checkbox-group"
-                            style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            <!-- Generated dynamically -->
+                    <!-- COLUMN 3 & 4: TAXONOMY (Genre & Subgenre) -->
+                    <div style="grid-column: span 2; display:flex; flex-direction:column; gap:15px">
+
+                        <!-- GENRES -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">GÊNEROS</label>
+                            <input type="text" id="genreSearch" placeholder="Buscar gênero..."
+                                style="width: 100%; padding: 6px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: white; font-size: 0.8rem;">
+                            <div id="genreFilters" class="checkbox-group"
+                                style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 200px; overflow-y:auto; padding-right:5px">
+                                <!-- Generated dynamically -->
+                            </div>
                         </div>
+
+                        <!-- SUBGENRES -->
+                        <div class="filter-group">
+                            <label
+                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">SUB-GÊNEROS</label>
+                            <input type="text" id="subgenreSearch" placeholder="Buscar sub-gênero..."
+                                style="width: 100%; padding: 6px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: white; font-size: 0.8rem;">
+                            <div id="subgenreFilters" class="checkbox-group"
+                                style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 150px; overflow-y: auto; padding-right:5px">
+                                <!-- Generated dynamically -->
+                            </div>
+                        </div>
+
                     </div>
 
-                    <!-- Status (Multi-select) -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">STATUS</label>
-                        <div id="statusFilters" class="checkbox-group"
-                            style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            <!-- Generated dynamically -->
-                        </div>
-                    </div>
-
-                    <!-- Tags -->
-                    <div class="filter-group">
-                        <label
-                            style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">TAGS</label>
-                        <div id="tagFilters" class="checkbox-group" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            <button type="button" class="tag-filter-btn" data-tag="Digital">☁️ Digital</button>
-                            <button type="button" class="tag-filter-btn" data-tag="Lacrado">✨ Lacrado</button>
-                            <button type="button" class="tag-filter-btn" data-tag="Completo">📦 Completo</button>
-                            <button type="button" class="tag-filter-btn" data-tag="Usado">💿 Usado</button>
-                            <button type="button" class="tag-filter-btn" data-tag="Novo">Novo</button>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Filter Actions -->
@@ -280,6 +362,10 @@
                 </div>
             </div>
         </section>
+
+        <!-- Active Fitlers Chips -->
+        <div id="activeFiltersContainer" class="hidden"
+            style="padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
 
         <main id="gamesContainer" class="games-grid"></main>
 
@@ -311,11 +397,19 @@
                             <option value="PlayStation 5">PlayStation 5</option>
                             <option value="Xbox Series X">Xbox Series X</option>
                             <option value="Nintendo Switch">Nintendo Switch</option>
+                            <option value="PlayStation 4">PlayStation 4</option>
+                            <option value="Xbox One">Xbox One</option>
+                            <option value="PlayStation 3">PlayStation 3</option>
+                            <option value="Xbox 360">Xbox 360</option>
                         </select>
                     </div>
                     <div class="input-group flex-1">
                         <label for="inputPrice">Preço Pago (R$)</label>
                         <input type="number" id="inputPrice" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="input-group flex-1">
+                        <label for="inputPlaytime">Tempo Jogo (Horas)</label>
+                        <input type="number" id="inputPlaytime" step="1" placeholder="Ex: 20">
                     </div>
                 </div>
                 <div class="row-flex">
