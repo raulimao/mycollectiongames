@@ -3,6 +3,7 @@ import { GameService, SocialService, PriceService } from './services/api.js';
 import { ImportService } from './services/importer.js';
 import { GogImportService } from './services/gogImporter.js';
 import { SubscriptionService } from './services/subscriptionService.js';
+import { HLTBService } from './services/hltbService.js';
 import { appStore } from './modules/store.js';
 
 import { Diagnostics } from './modules/diagnostics.js';
@@ -2411,7 +2412,7 @@ const setupRawgSearch = () => {
                     div.appendChild(img);
                     div.appendChild(info);
 
-                    div.onclick = () => {
+                    div.onclick = async () => {
                         input.value = item.name;
                         document.getElementById('inputImage').value = item.background_image || '';
 
@@ -2433,9 +2434,19 @@ const setupRawgSearch = () => {
                             autoTags = autoTags.concat(meaningfulTags);
                         }
 
-                        // --- NEW: AUTO-TAGGING (PLAYTIME) ---
-                        if (item.playtime && item.playtime > 0) {
-                            autoTags.push(`Time:${item.playtime}h`);
+                        // --- REPLACED: HLTB INTEGRATION (More Accurate than RAWG) ---
+                        // Old RAWG playtime is inaccurate (shows 1h when HLTB shows 7h)
+                        // Now we fetch from HowLongToBeat for accurate completion times
+                        const hltbData = await HLTBService.search(item.name);
+                        if (hltbData && hltbData.averageTime > 0) {
+                            autoTags.push(`Time:${hltbData.averageTime}h`);
+                            console.log(`[HLTB] ${item.name}: ${hltbData.averageTime}h (Main: ${hltbData.mainStory}h, +Extras: ${hltbData.mainExtras}h)`);
+                        } else {
+                            // Fallback to RAWG if HLTB fails (rare games might not be in HLTB)
+                            if (item.playtime && item.playtime > 0) {
+                                autoTags.push(`Time:${item.playtime}h`);
+                                console.log(`[RAWG Fallback] ${item.name}: ${item.playtime}h`);
+                            }
                         }
 
                         let autoTagsInput = document.getElementById('inputAutoTags');
@@ -2694,7 +2705,196 @@ const detectSteamIdFromUrl = async (url) => {
     return null;
 };
 
+
 // ===================================================================================================
+// UTILS & SYNC
+// ===================================================================================================
+
+window.handleSyncPlaytime = async (gameId, gameTitle, btnElement) => {
+    // 1. Show loading state on button
+    const originalContent = btnElement.innerHTML;
+    btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btnElement.disabled = true;
+
+    try {
+        showToast('Buscando dados no HowLongToBeat...', 'info');
+
+        // 2. Fetch from HLTB
+        // Verify if HLTBService is available
+        if (typeof HLTBService === 'undefined') {
+            throw new Error('Serviço HLTB não carregado');
+        }
+
+        const hltbData = await HLTBService.search(gameTitle);
+
+        if (!hltbData) {
+            showToast('Jogo não encontrado no HowLongToBeat', 'warning');
+            return; // Stop here, don't update
+        }
+
+        // 3. Update Tags
+        const { games, user } = appStore.get();
+        if (!games || !user) throw new Error('Estado da aplicação inválido');
+
+        const game = games.find(g => g.id == gameId);
+        if (!game) throw new Error('Jogo não encontrado localmente');
+
+        let tags = game.tags || [];
+        // Remove old Time tag (regex or startsWith)
+        tags = tags.filter(t => !t.startsWith('Time:'));
+
+        // Add new tag if time > 0
+        const newTime = hltbData.averageTime;
+        if (newTime > 0) {
+            tags.push(`Time:${newTime}h`);
+        }
+
+        // 4. Update Supabase
+        const { error } = await supabase
+            .from('games')
+            .update({ tags: tags })
+            .eq('id', game.id);
+
+        if (error) throw error;
+
+        // 5. Update Local State (Manual Mutation for speed)
+        game.tags = tags;
+        // Force update of state to trigger any listeners, but we will manually update DOM to avoid modal close
+        appStore.setState({ games: [...games] });
+
+        // 6. Update UI Manually (Active Modal)
+        const tagsContainer = document.getElementById('detailTagsContainer');
+        if (tagsContainer) {
+            const list = tagsContainer.querySelector('.detail-tags-list');
+            if (list) {
+                list.innerHTML = '';
+                tags.forEach(tag => {
+                    const tagSpan = document.createElement('span');
+                    tagSpan.className = 'detail-tag';
+                    tagSpan.textContent = tag;
+                    list.appendChild(tagSpan);
+                });
+            }
+        }
+
+        // Also update background grid card if visible
+        renderApp(); // This is safe? Usually re-renders grid. Modal overlay is separate in index.html structure usually.
+        // If renderApp clears modal, we skip it. 
+        // Based on ui.js, renderApp -> setupUI -> renderGrid. It shouldn't close modal if modal is just a hidden/shown div.
+        // But to be safe, just updating the modal is enough for the user interaction. The grid will update on next refresh/action.
+
+        showToast(`Tempo atualizado: ${newTime}h (HLTB)`, 'success');
+
+    } catch (e) {
+        console.error(e);
+        showToast('Erro ao sincronizar: ' + e.message, 'error');
+    } finally {
+        if (btnElement) {
+            btnElement.innerHTML = originalContent;
+            btnElement.disabled = false;
+        }
+    }
+};
+
+
+window.handleBulkSyncPlaytime = async (btnElement) => {
+    // 1. Confirm action
+    if (!confirm("Isso irá buscar o tempo de todos os jogos da sua coleção no HowLongToBeat.\n\nPode levar alguns minutos. Deseja continuar?")) return;
+
+    // 2. Setup UI state
+    const originalContent = btnElement ? btnElement.innerHTML : '';
+    if (btnElement) {
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processando...';
+        btnElement.disabled = true;
+    }
+
+    try {
+        const { games, allGamesStats, user } = appStore.get();
+        if (!user) throw new Error('Estado inválido: Usuário não identificado');
+
+        // Use allGamesStats (Full Collection) if available, otherwise fallback to current view
+        // This fixes the issue where 'games' might be filtered or empty
+        const gamesToSync = (allGamesStats && allGamesStats.length > 0) ? allGamesStats : (games || []);
+
+        if (gamesToSync.length === 0) {
+            showToast('Nenhum jogo encontrado para sincronizar.', 'warning');
+            return;
+        }
+
+        let updatedCount = 0;
+        let errorCount = 0;
+
+        showToast(`Iniciando sincronização de ${gamesToSync.length} jogos...`, 'info');
+
+        // Process in chunks to avoid overwhelming everything
+        for (let i = 0; i < gamesToSync.length; i++) {
+            const game = gamesToSync[i];
+
+            // Update button progress
+            if (btnElement) btnElement.innerHTML = `< i class="fa-solid fa-spinner fa-spin" ></i > ${i + 1}/${gamesToSync.length}`;
+
+            try {
+                // Initial delay to be nice to API
+                await new Promise(r => setTimeout(r, 800));
+
+                // Always CLEAR old HLTB tags first (Reset logic)
+                let tags = game.tags || [];
+                tags = tags.filter(t => !t.startsWith('Time:') && !t.startsWith('hltb:'));
+
+                const hltbData = await HLTBService.search(game.title);
+
+                if (hltbData) {
+                    // Add standard time (Average)
+                    if (hltbData.averageTime > 0) {
+                        tags.push(`Time:${hltbData.averageTime}h`);
+                    }
+
+                    // Add rich tags (optional, future proofing)
+                    if (hltbData.mainStory > 0) tags.push(`hltb:main:${hltbData.mainStory}h`);
+                    if (hltbData.mainExtras > 0) tags.push(`hltb:extras:${hltbData.mainExtras}h`);
+                    if (hltbData.completionist > 0) tags.push(`hltb:100:${hltbData.completionist}h`);
+                }
+
+                // Update Supabase (This saves the cleared state if no data found, satisfying "Reset")
+                const { error } = await supabase
+                    .from('games')
+                    .update({ tags: tags })
+                    .eq('id', game.id);
+
+                if (error) {
+                    console.warn(`Supabase update failed for ${game.title}`, error);
+                    errorCount++;
+                } else {
+                    // Update Local
+                    game.tags = tags;
+                    updatedCount++;
+                }
+            } catch (err) {
+                console.warn(`Failed to sync ${game.title}:`, err);
+                errorCount++;
+            }
+        }
+
+        // Final UI Update
+        appStore.setState({ games: [...games] }); // Trigger re-render
+        renderApp(appStore.get());
+
+        showToast(`Sincronização concluída! ${updatedCount} atualizados. ${errorCount > 0 ? `(${errorCount} falhas)` : ''}`, 'success');
+
+    } catch (e) {
+        console.error(e);
+        showToast('Erro no processo de bulk sync: ' + e.message, 'error');
+    } finally {
+        if (btnElement) {
+            btnElement.innerHTML = originalContent;
+            btnElement.disabled = false;
+        }
+    }
+};
+
+// ===================================================================================================
+
+
 // SUBSCRIPTION & PRO FEATURES
 // ===================================================================================================
 

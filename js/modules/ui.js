@@ -837,15 +837,47 @@ const renderGrid = (visibleGames, isShared, totalCount = 0) => {
         imgWrapper.appendChild(overlay);
 
         if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
-            const tagsDiv = document.createElement('div');
-            tagsDiv.className = 'card-tags';
+            // 1. EXTRACT HLTB DATA & FILTER TAGS
+            const hltb = { main: 0, extras: 0, comp: 0 };
+            const visibleTags = [];
+
             game.tags.forEach(tag => {
-                const tagSpan = document.createElement('span');
-                tagSpan.className = `mini-tag ${tag.toLowerCase()}`;
-                tagSpan.textContent = tag;
-                tagsDiv.appendChild(tagSpan);
+                const t = tag.toLowerCase();
+                if (t.startsWith('hltb:main:')) hltb.main = t.replace('hltb:main:', '').replace('h', '');
+                else if (t.startsWith('hltb:extras:')) hltb.extras = t.replace('hltb:extras:', '').replace('h', '');
+                else if (t.startsWith('hltb:100:')) hltb.comp = t.replace('hltb:100:', '').replace('h', '');
+                else if (t.startsWith('time:')) { /* skip legacy */ }
+                else if (t.startsWith('genre:')) { /* skip from card */ }
+                else if (t.startsWith('sub:')) { /* skip from card */ }
+                else visibleTags.push(tag);
             });
-            imgWrapper.appendChild(tagsDiv);
+
+            // 2. RENDER HLTB RIBBON (Bottom of image)
+            if (hltb.main > 0 || hltb.extras > 0 || hltb.comp > 0) {
+                const hltbOverlay = document.createElement('div');
+                hltbOverlay.className = 'hltb-info-overlay';
+
+                let hltbHtml = '';
+                if (hltb.main > 0) hltbHtml += `<div class="hltb-metric" title="Main Story"><i class="fa-solid fa-clock"></i> ${hltb.main}h</div>`;
+                if (hltb.extras > 0) hltbHtml += `<div class="hltb-metric" title="Main + Extras"><i class="fa-solid fa-plus"></i> ${hltb.extras}h</div>`;
+                if (hltb.comp > 0) hltbHtml += `<div class="hltb-metric" title="Completionist"><i class="fa-solid fa-trophy"></i> ${hltb.comp}h</div>`;
+
+                hltbOverlay.innerHTML = hltbHtml;
+                imgWrapper.appendChild(hltbOverlay);
+            }
+
+            // 3. RENDER REMAINING TAGS (Now horizontal in CSS)
+            if (visibleTags.length > 0) {
+                const tagsDiv = document.createElement('div');
+                tagsDiv.className = 'card-tags';
+                visibleTags.forEach(tag => {
+                    const tagSpan = document.createElement('span');
+                    tagSpan.className = `mini-tag ${tag.toLowerCase()}`;
+                    tagSpan.textContent = tag;
+                    tagsDiv.appendChild(tagSpan);
+                });
+                imgWrapper.appendChild(tagsDiv);
+            }
         }
 
         // Metacritic Badge (Top Left)
@@ -1052,10 +1084,15 @@ const openGameDetails = async (game, isShared) => {
     }
     tagsContainer.innerHTML = '';
     if (game.tags && Array.isArray(game.tags) && game.tags.length > 0) {
+        const headerDiv = document.createElement('div');
+        headerDiv.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:5px";
+
         const label = document.createElement('span');
-        label.style.cssText = "display:block; font-size:0.75rem; color:#888; margin-bottom:5px";
+        label.style.cssText = "display:block; font-size:0.75rem; color:#888;";
         label.textContent = "DETALHES";
-        tagsContainer.appendChild(label);
+
+        headerDiv.appendChild(label);
+        tagsContainer.appendChild(headerDiv);
 
         const list = document.createElement('div');
         list.className = 'detail-tags-list';

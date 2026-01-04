@@ -145,6 +145,12 @@
                         <i class="fa-solid fa-download"></i>
                     </button>
 
+                    <button onclick="window.handleBulkSyncPlaytime(this)" class="btn-primary btn-icon"
+                        title="Sincronizar Tempos (HowLongToBeat)"
+                        style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
+                        <i class="fa-solid fa-hourglass-half"></i>
+                    </button>
+
 
 
 
@@ -205,14 +211,19 @@
                                 POR</label>
                             <select id="filterSortBy" class="filter-select"
                                 style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-size: 0.85rem;">
-                                <option value="title">Título (A-Z)</option>
-                                <option value="title-desc">Título (Z-A)</option>
-                                <option value="date">Mais Recentes</option>
-                                <option value="date-desc">Mais Antigos</option>
-                                <option value="price">Preço (Menor)</option>
-                                <option value="price-desc">Preço (Maior)</option>
-                                <option value="metacritic">Rating (Maior)</option>
-                                <option value="metacritic-desc">Rating (Menor)</option>
+                                <option value="title" style="background: #1a1a1c; color: white;">Título (A-Z)</option>
+                                <option value="title-desc" style="background: #1a1a1c; color: white;">Título (Z-A)
+                                </option>
+                                <option value="date" style="background: #1a1a1c; color: white;">Mais Recentes</option>
+                                <option value="date-desc" style="background: #1a1a1c; color: white;">Mais Antigos
+                                </option>
+                                <option value="price" style="background: #1a1a1c; color: white;">Preço (Menor)</option>
+                                <option value="price-desc" style="background: #1a1a1c; color: white;">Preço (Maior)
+                                </option>
+                                <option value="metacritic" style="background: #1a1a1c; color: white;">Rating (Maior)
+                                </option>
+                                <option value="metacritic-desc" style="background: #1a1a1c; color: white;">Rating
+                                    (Menor)</option>
                             </select>
                         </div>
 
