@@ -85,6 +85,44 @@ class GameVaultHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+        if self.path == '/proxy/youtube':
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                post_data = self.rfile.read(content_length)
+                
+                json_body = json.loads(post_data.decode('utf-8'))
+                query = json_body.get('query', '')
+                
+                if not query:
+                    raise Exception("No query provided")
+
+                print(f"[SmartProxy] YouTube Search: '{query}'")
+                
+                import urllib.request, urllib.parse, re
+                url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                html = urllib.request.urlopen(req).read().decode('utf-8')
+                
+                # Match the first videoId
+                match = re.search(r'\"videoId\":\"(.*?)\"', html)
+                video_id = match.group(1) if match else None
+                
+                if not video_id:
+                    raise Exception("No video found")
+
+                response_json = json.dumps({'videoId': video_id})
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(response_json.encode('utf-8'))
+                print(f"[SmartProxy] YouTube Success: {video_id}")
+            except Exception as e:
+                print(f"[SmartProxy] YouTube Error: {str(e)}")
+                self.send_response(500)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
             return
 
         super().do_GET()

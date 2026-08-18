@@ -23,6 +23,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/winbox@0.2.82/dist/winbox.bundle.min.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- SheetJS for Excel Export -->
@@ -145,30 +146,17 @@
                         <i class="fa-solid fa-download"></i>
                     </button>
 
-                    <button onclick="window.handleBulkSyncPlaytime(this)" class="btn-primary btn-icon"
-                        title="Sincronizar Tempos (HowLongToBeat)"
-                        style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
-                        <i class="fa-solid fa-hourglass-half"></i>
-                    </button>
 
-
-
-
-                    <button id="btnImport" class="btn-primary btn-icon" title="Importar Jogos (Steam)"
-                        aria-label="Importar Jogos">
-                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                    <button onclick="if(window.gameTV) window.gameTV.toggle();" class="btn-primary btn-icon" title="Game TV - Assista vídeos da sua coleção"
+                        aria-label="Game TV" style="background: linear-gradient(135deg, #f43f5e, #e11d48);">
+                        <i class="fa-solid fa-tv"></i>
                     </button>
 
                     <button id="btnCompare" class="btn-primary btn-icon" title="Comparar Coleção com Amigo"
                         aria-label="Comparar Coleções" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);">
                         <i class="fa-solid fa-code-compare"></i>
                     </button>
-                    <!-- Deal Hunter -->
-                    <button id="btnDealHunter" class="btn-primary btn-icon" onclick="runDealHunter()"
-                        title="Buscar Ofertas (Baseado na Wishlist)"
-                        style="background: linear-gradient(135deg, #f6e05e, #d69e2e);">
-                        <i class="fa-solid fa-tags"></i>
-                    </button>
+
                 </div>
 
                 <div class="main-wrapper">
@@ -176,207 +164,195 @@
                         <i class="fa-solid fa-search"></i>
                         <input type="text" id="searchInput" placeholder="Buscar na coleção...">
                     </div>
+                    <button class="filter-fab" id="btnOpenFilters" title="Filtros Avançados">
+                        <i class="fa-solid fa-sliders"></i>
+                        FILTROS
+                        <span class="fab-badge" id="filterCountBadge" style="display:none">0</span>
+                    </button>
                     <button id="btnOpenAddModal" class="btn-primary btn-new-game">
                         <i class="fa-solid fa-plus"></i> NOVO JOGO
                     </button>
                 </div>
             </div>
+
         </section>
 
-        <!-- ADVANCED FILTERS PANEL -->
-        <section class="filters-panel glass-panel" id="filtersPanel" style="margin-top: 20px;">
-            <div class="filters-header"
-                style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer;"
-                onclick="document.getElementById('filtersContent').classList.toggle('hidden'); this.querySelector('.fa-chevron-down').classList.toggle('rotate-180');">
-                <h3
-                    style="margin: 0; font-size: 0.9rem; color: var(--secondary); font-family: var(--font-num); display: flex; align-items: center; gap: 10px;">
-                    <i class="fa-solid fa-sliders"></i> FILTROS AVANÇADOS
-                    <span id="filterCountBadge" class="badge bg-primary"
-                        style="display: none; font-size: 0.7rem; padding: 2px 8px;"></span>
-                </h3>
-                <i class="fa-solid fa-chevron-down" style="transition: transform 0.3s; color: #666;"></i>
+
+        <!-- FILTER OVERLAY (escurece o fundo) -->
+        <div class="filter-overlay" id="filterOverlay"></div>
+
+        <!-- FILTER DRAWER (sidebar da direita) -->
+        <aside class="filter-drawer" id="filterDrawer" role="dialog" aria-label="Filtros Avançados">
+
+            <!-- Header -->
+            <div class="fd-header">
+                <div class="fd-title">
+                    <i class="fa-solid fa-sliders"></i>
+                    FILTROS AVANÇADOS
+                </div>
+                <button class="fd-close" id="fdCloseBtn" title="Fechar filtros">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
-            <div id="filtersContent" class="filters-content hidden" style="padding: 20px;">
-                <!-- NEW: GRID LAYOUT FOR FILTERS -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-items: start;">
+            <!-- Chips de filtros ativos -->
+            <div class="fd-active-chips" id="fdActiveChips"></div>
 
-                    <!-- COLUMN 1: METRICS & SORT -->
-                    <div style="grid-column: span 1; display:flex; flex-direction:column; gap:15px">
+            <!-- Corpo com scroll -->
+            <div class="fd-body">
 
-                        <!-- Sort Options -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">ORDENAR
-                                POR</label>
-                            <select id="filterSortBy" class="filter-select"
-                                style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-size: 0.85rem;">
-                                <option value="title" style="background: #1a1a1c; color: white;">Título (A-Z)</option>
-                                <option value="title-desc" style="background: #1a1a1c; color: white;">Título (Z-A)
-                                </option>
-                                <option value="date" style="background: #1a1a1c; color: white;">Mais Recentes</option>
-                                <option value="date-desc" style="background: #1a1a1c; color: white;">Mais Antigos
-                                </option>
-                                <option value="price" style="background: #1a1a1c; color: white;">Preço (Menor)</option>
-                                <option value="price-desc" style="background: #1a1a1c; color: white;">Preço (Maior)
-                                </option>
-                                <option value="metacritic" style="background: #1a1a1c; color: white;">Rating (Maior)
-                                </option>
-                                <option value="metacritic-desc" style="background: #1a1a1c; color: white;">Rating
-                                    (Menor)</option>
-                            </select>
-                        </div>
-
-                        <!-- Metacritic Range -->
-                        <div class="filter-group">
-                            <div
-                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">METACRITIC</label>
-                                <div style="display:flex; gap:5px; align-items:center;">
-                                    <input type="number" id="inputMcMinNumber" value="0" min="0" max="100"
-                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                    <span style="color:#666">-</span>
-                                    <input type="number" id="inputMcMaxNumber" value="100" min="0" max="100"
-                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="range" id="filterMcMin" min="0" max="100" value="0" style="flex: 1;">
-                                <input type="range" id="filterMcMax" min="0" max="100" value="100" style="flex: 1;">
-                            </div>
-                        </div>
-
-                        <!-- Price Range -->
-                        <div class="filter-group">
-                            <div
-                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">PREÇO (R$)</label>
-                                <div style="display:flex; gap:5px; align-items:center;">
-                                    <input type="number" id="inputPriceMinNumber" value="0" min="0" max="10000"
-                                        style="width:60px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                    <span style="color:#666">-</span>
-                                    <input type="number" id="inputPriceMaxNumber" value="10000" min="0" max="10000"
-                                        style="width:60px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="range" id="filterPriceMin" min="0" max="10000" step="50" value="0"
-                                    style="flex: 1;">
-                                <input type="range" id="filterPriceMax" min="0" max="10000" step="50" value="10000"
-                                    style="flex: 1;">
-                            </div>
-                        </div>
-
-                        <!-- Playtime Range -->
-                        <div class="filter-group">
-                            <div
-                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <label style="font-size: 0.75rem; color: #888; font-weight: bold;">TEMPO (Horas)</label>
-                                <div style="display:flex; gap:5px; align-items:center;">
-                                    <input type="number" id="inputTimeMinNumber" value="0" min="0" max="9999"
-                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                    <span style="color:#666">-</span>
-                                    <input type="number" id="inputTimeMaxNumber" value="500" min="0" max="9999"
-                                        style="width:50px; padding:4px; font-size:0.8rem; text-align:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:4px;">
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <input type="range" id="filterTimeMin" min="0" max="500" step="1" value="0"
-                                    style="flex: 1;">
-                                <input type="range" id="filterTimeMax" min="0" max="500" step="1" value="500"
-                                    style="flex: 1;">
-                            </div>
-                        </div>
-
+                <!-- ORDENAR -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-arrow-up-wide-short"></i>
+                        Ordenar por
                     </div>
-
-                    <!-- COLUMN 2: ATTRIBUTES (Platform, Status, Tags) -->
-                    <div style="grid-column: span 1; display:flex; flex-direction:column; gap:15px">
-
-                        <!-- Status -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">STATUS</label>
-                            <div id="statusFilters" class="checkbox-group"
-                                style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                <!-- Generated dynamically -->
-                            </div>
-                        </div>
-
-                        <!-- Platforms -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">PLATAFORMAS</label>
-                            <div id="platformFilters" class="checkbox-group"
-                                style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                <!-- Generated dynamically -->
-                            </div>
-                        </div>
-
-                        <!-- Tags -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">TAGS</label>
-                            <div id="tagFilters" class="checkbox-group"
-                                style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                <button type="button" class="tag-filter-btn" data-tag="Digital">☁️ Digital</button>
-                                <button type="button" class="tag-filter-btn" data-tag="Lacrado">✨ Lacrado</button>
-                                <button type="button" class="tag-filter-btn" data-tag="Completo">📦 Completo</button>
-                                <button type="button" class="tag-filter-btn" data-tag="Usado">💿 Usado</button>
-                                <button type="button" class="tag-filter-btn" data-tag="Novo">Novo</button>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <!-- COLUMN 3 & 4: TAXONOMY (Genre & Subgenre) -->
-                    <div style="grid-column: span 2; display:flex; flex-direction:column; gap:15px">
-
-                        <!-- GENRES -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">GÊNEROS</label>
-                            <input type="text" id="genreSearch" placeholder="Buscar gênero..."
-                                style="width: 100%; padding: 6px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: white; font-size: 0.8rem;">
-                            <div id="genreFilters" class="checkbox-group"
-                                style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 200px; overflow-y:auto; padding-right:5px">
-                                <!-- Generated dynamically -->
-                            </div>
-                        </div>
-
-                        <!-- SUBGENRES -->
-                        <div class="filter-group">
-                            <label
-                                style="display: block; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">SUB-GÊNEROS</label>
-                            <input type="text" id="subgenreSearch" placeholder="Buscar sub-gênero..."
-                                style="width: 100%; padding: 6px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: white; font-size: 0.8rem;">
-                            <div id="subgenreFilters" class="checkbox-group"
-                                style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 150px; overflow-y: auto; padding-right:5px">
-                                <!-- Generated dynamically -->
-                            </div>
-                        </div>
-
-                    </div>
-
+                    <select id="filterSortBy" class="fd-select">
+                        <option value="title">Título (A → Z)</option>
+                        <option value="title-desc">Título (Z → A)</option>
+                        <option value="date">Mais Recentes</option>
+                        <option value="date-desc">Mais Antigos</option>
+                        <option value="price">Preço (Menor → Maior)</option>
+                        <option value="price-desc">Preço (Maior → Menor)</option>
+                        <option value="metacritic">Rating (Maior → Menor)</option>
+                        <option value="metacritic-desc">Rating (Menor → Maior)</option>
+                    </select>
                 </div>
 
-                <!-- Filter Actions -->
-                <div
-                    style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <button id="btnApplyFilters" class="btn-primary" style="flex: 1;">
-                        <i class="fa-solid fa-filter"></i> APLICAR FILTROS
-                    </button>
-                    <button id="btnClearFilters" class="btn-small"
-                        style="background: transparent; border: 1px solid rgba(255,255,255,0.2);">
-                        <i class="fa-solid fa-xmark"></i> LIMPAR
-                    </button>
+                <!-- STATUS -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-circle-half-stroke"></i>
+                        Status
+                    </div>
+                    <div id="statusFilters" class="fd-facet-group no-limit">
+                        <!-- Gerado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- PLATAFORMAS -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-gamepad"></i>
+                        Plataformas
+                    </div>
+                    <div id="platformFilters" class="fd-facet-group no-limit">
+                        <!-- Gerado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- METACRITIC -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-star"></i>
+                        Metacritic
+                    </div>
+                    <div class="dual-range-wrapper">
+                        <div class="range-track"></div>
+                        <div class="range-fill" id="mcRangeFill"></div>
+                        <input type="range" id="filterMcMin" min="0" max="100" value="0">
+                        <input type="range" id="filterMcMax" min="0" max="100" value="100">
+                    </div>
+                    <div class="range-values">
+                        <span id="mcMinDisplay">0</span>
+                        <span id="mcMaxDisplay">100</span>
+                    </div>
+                </div>
+
+                <!-- PREÇO -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-tag"></i>
+                        Preço Pago (R$)
+                    </div>
+                    <div class="dual-range-wrapper">
+                        <div class="range-track"></div>
+                        <div class="range-fill" id="priceRangeFill"></div>
+                        <input type="range" id="filterPriceMin" min="0" max="10000" step="10" value="0">
+                        <input type="range" id="filterPriceMax" min="0" max="10000" step="10" value="10000">
+                    </div>
+                    <div class="range-values">
+                        <span>R$ <span id="priceMinDisplay">0</span></span>
+                        <span>R$ <span id="priceMaxDisplay">10000</span></span>
+                    </div>
+                </div>
+
+                <!-- TEMPO DE JOGO -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-regular fa-clock"></i>
+                        Tempo de Jogo (horas)
+                    </div>
+                    <div class="dual-range-wrapper">
+                        <div class="range-track"></div>
+                        <div class="range-fill" id="timeRangeFill"></div>
+                        <input type="range" id="filterTimeMin" min="0" max="500" step="1" value="0">
+                        <input type="range" id="filterTimeMax" min="0" max="500" step="1" value="500">
+                    </div>
+                    <div class="range-values">
+                        <span><span id="timeMinDisplay">0</span>h</span>
+                        <span><span id="timeMaxDisplay">500</span>h</span>
+                    </div>
+                </div>
+
+                <!-- GÊNEROS -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-masks-theater"></i>
+                        Gêneros
+                    </div>
+                    <input type="search" id="genreSearch" class="fd-search" placeholder="🔍  Buscar gênero...">
+                    <div id="genreFilters" class="fd-facet-group">
+                        <!-- Gerado dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- TAGS -->
+                <div class="fd-section">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-tags"></i>
+                        Tags
+                    </div>
+                    <div id="tagFilters" class="fd-facet-group no-limit">
+                        <button type="button" class="tag-filter-btn" data-tag="Digital">Digital</button>
+                        <button type="button" class="tag-filter-btn" data-tag="Lacrado">Lacrado</button>
+                        <button type="button" class="tag-filter-btn" data-tag="Completo">Completo</button>
+                        <button type="button" class="tag-filter-btn" data-tag="Usado">Usado</button>
+                        <button type="button" class="tag-filter-btn" data-tag="Novo">Novo</button>
+                        <button type="button" class="tag-filter-btn" data-tag="Fisico">Físico</button>
+                    </div>
+                </div>
+
+                <!-- SUB-GÊNEROS (oculto por padrão, abre se tiver dados) -->
+                <div class="fd-section" id="subgenreSection" style="display:none">
+                    <div class="fd-section-label">
+                        <i class="fa-solid fa-layer-group"></i>
+                        Sub-gêneros
+                    </div>
+                    <input type="search" id="subgenreSearch" class="fd-search" placeholder="🔍  Buscar sub-gênero...">
+                    <div id="subgenreFilters" class="fd-facet-group">
+                        <!-- Gerado dinamicamente -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="fd-footer">
+                <button class="fd-clear-btn" id="btnClearFilters">
+                    <i class="fa-solid fa-xmark"></i> Limpar tudo
+                </button>
+                <div class="fd-result-count" id="fdResultCount">
+                    — jogos
+                    <small>correspondentes</small>
                 </div>
             </div>
-        </section>
+        </aside>
 
-        <!-- Active Fitlers Chips -->
-        <div id="activeFiltersContainer" class="hidden"
-            style="padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        <!-- Active Filters Chips bar (abaixo das tabs) -->
+        <div id="activeFiltersContainer" class="hidden"></div>
+
+
 
         <main id="gamesContainer" class="games-grid"></main>
 
@@ -675,262 +651,6 @@
     </div>
 
     <!-- IMPORT MODAL -->
-    <div id="importModal" class="modal-overlay hidden" style="z-index: 6600;">
-        <div class="modal-content glass-panel" style="max-width: 500px; max-height: 85vh; overflow-y: auto;">
-            <div class="modal-header">
-                <h2><i class="fa-solid fa-cloud-arrow-down"></i> IMPORTAR JOGOS</h2>
-                <button onclick="document.getElementById('importModal').classList.add('hidden')"
-                    class="close-btn">&times;</button>
-            </div>
-
-            <div style="padding: 20px;">
-                <!-- Platform Selector -->
-                <div class="input-group" style="margin-bottom: 20px;">
-                    <label>Método de Importação</label>
-                    <select id="importPlatform" class="styled-select"
-                        onchange="window.handleImportPlatformChange(this.value)">
-                        <option value="steam">Steam (Web API)</option>
-                        <option value="goggalaxy">GOG Galaxy 2.0 (Multi-plataforma)</option>
-                    </select>
-                </div>
-
-                <!-- Steam Configuration -->
-                <div id="steamConfig">
-                    <div
-                        style="background: rgba(255,193,7,0.05); border: 1px solid rgba(255,193,7,0.2); border-radius: 8px; padding: 12px; margin-bottom: 20px;">
-                        <h4 style="color: var(--warning); margin: 0 0 8px 0; font-size: 0.85rem;">
-                            <i class="fa-solid fa-key"></i> Configuração Necessária
-                        </h4>
-                        <div style="font-size: 0.8rem; color: #aaa;">
-                            <p style="margin: 0 0 5px 0;">1. Pegue sua API Key:</p>
-                            <a href="https://steamcommunity.com/dev/apikey" target="_blank"
-                                style="color: #0ea5e9; text-decoration: underline;">
-                                Obter Steam API Key <i class="fa-solid fa-external-link-alt fa-xs"></i>
-                            </a>
-                            <p style="margin: 8px 0 0 0;">2. Cole a URL do perfil e ID abaixo.</p>
-                        </div>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="steamApiKey" style="font-size: 0.85rem;">
-                            <i class="fa-solid fa-key"></i> Steam API Key
-                        </label>
-                        <div style="position: relative;">
-                            <input type="password" id="steamApiKey" placeholder="Cole sua API Key aqui..."
-                                autocomplete="off" style="padding-right: 35px;">
-                            <i id="apiKeyValidation" class="fa-solid"
-                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none;"></i>
-                        </div>
-                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="rememberApiKey" checked
-                                style="width: 16px; height: 16px; cursor: pointer;">
-                            <label for="rememberApiKey"
-                                style="color: #888; font-size: 0.85rem; cursor: pointer; margin: 0;">
-                                <i class="fa-solid fa-floppy-disk"></i> Lembrar API Key neste navegador
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="input-group">
-                        <label for="steamId">
-                            <i class="fa-solid fa-id-card"></i> Steam ID (64-bit)
-                            <i class="fa-solid fa-circle-question" style="color: #666; font-size: 0.8rem; cursor: help;"
-                                title="Seu Steam ID de 64 bits (17 dígitos). Cole a URL do seu perfil Steam e clique em 'Detectar'"></i>
-                        </label>
-                        <div style="display: flex; gap: 8px;">
-                            <div style="position: relative; flex: 1;">
-                                <input type="text" id="steamId"
-                                    placeholder="Ex: 76561198012345678 ou cole a URL do perfil" pattern="[0-9]{17}"
-                                    autocomplete="off" style="padding-right: 35px;">
-                                <i id="steamIdValidation" class="fa-solid"
-                                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none;"></i>
-                            </div>
-                            <button type="button" id="btnDetectSteamId" class="btn-secondary"
-                                style="padding: 0 16px; white-space: nowrap;"
-                                title="Detectar Steam ID da URL do perfil">
-                                <i class="fa-solid fa-magnifying-glass"></i> Detectar
-                            </button>
-                        </div>
-                        <small id="steamIdHint" style="color: #888; display: block; margin-top: 5px;">
-                            Formato: 17 dígitos numéricos
-                        </small>
-                    </div>
-
-                    <!-- Last Import Info -->
-                    <div id="lastImportInfo" class="hidden"
-                        style="background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 10px; margin-bottom: 15px;">
-                        <p style="color: #c4b5fd; font-size: 0.85rem; margin: 0;">
-                            <i class="fa-solid fa-clock-rotate-left"></i>
-                            <strong>Última importação:</strong> <span id="lastImportText"></span>
-                        </p>
-                    </div>
-
-                    <div
-                        style="background: rgba(33,150,243,0.1); border: 1px solid rgba(33,150,243,0.3); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                        <p style="color: #81d4fa; font-size: 0.85rem; margin: 0;">
-                            <i class="fa-solid fa-shield-halved"></i>
-                            <strong>Privacidade:</strong> Certifique-se de que seu perfil Steam e detalhes de jogos
-                            estão públicos.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- GOG Galaxy Configuration -->
-                <div id="gogGalaxyConfig" class="hidden">
-                    <div
-                        style="background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1)); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-                        <h4 style="color: #a78bfa; margin: 0 0 10px 0; font-size: 0.9rem;">
-                            <i class="fa-solid fa-database"></i> GOG Galaxy 2.0 - Importação Multi-Plataforma
-                        </h4>
-                        <p style="color: #ccc; font-size: 0.8rem; margin: 0 0 10px 0;">
-                            Importe jogos de <strong>Xbox, Epic Games, Steam, GOG</strong> e outras plataformas
-                            conectadas ao GOG Galaxy.
-                        </p>
-                        <div
-                            style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; font-size: 0.75rem; color: #888;">
-                            <strong style="color: #60a5fa;">Como usar:</strong><br>
-                            1. Execute o script <code
-                                style="background:#333;padding:2px 5px;border-radius:3px">gog_report.py</code> na pasta
-                            scripts<br>
-                            2. Abra o arquivo <code
-                                style="background:#333;padding:2px 5px;border-radius:3px">gog_galaxy_report.json</code>
-                            gerado<br>
-                            3. Cole o conteúdo abaixo ou faça upload do arquivo
-                        </div>
-                    </div>
-
-                    <!-- JSON Input Area -->
-                    <div class="input-group" style="margin-bottom: 15px;">
-                        <label style="display: flex; justify-content: space-between; align-items: center;">
-                            <span><i class="fa-solid fa-code"></i> JSON do Relatório GOG Galaxy</span>
-                            <label for="gogFileUpload"
-                                style="cursor: pointer; color: var(--primary); font-size: 0.8rem;">
-                                <i class="fa-solid fa-upload"></i> Upload Arquivo
-                            </label>
-                        </label>
-                        <input type="file" id="gogFileUpload" accept=".json" style="display: none;"
-                            onchange="window.handleGogFileUpload(this)">
-                        <textarea id="gogJsonInput"
-                            style="width: 100%; height: 120px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #ccc; padding: 10px; font-family: monospace; font-size: 0.75rem; resize: vertical;"
-                            placeholder='Cole aqui o conteúdo do arquivo gog_galaxy_report.json...'></textarea>
-                    </div>
-
-                    <!-- Platform Selection (appears after JSON is loaded) -->
-                    <div id="gogPlatformSelection" class="hidden" style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 10px; font-size: 0.85rem; color: #ccc;">
-                            <i class="fa-solid fa-filter"></i> Selecione as plataformas para importar:
-                        </label>
-                        <div id="gogPlatformCheckboxes" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            <!-- Checkboxes will be generated dynamically -->
-                        </div>
-                    </div>
-
-                    <!-- Quick Actions -->
-                    <div id="gogQuickActions" class="hidden" style="display: flex; gap: 8px; margin-bottom: 15px;">
-                        <button type="button" onclick="window.gogSelectAll()" class="btn-small"
-                            style="flex: 1; font-size: 0.75rem;">
-                            <i class="fa-solid fa-check-double"></i> Selecionar Todos
-                        </button>
-                        <button type="button" onclick="window.gogSelectNone()" class="btn-small"
-                            style="flex: 1; font-size: 0.75rem;">
-                            <i class="fa-solid fa-xmark"></i> Limpar Seleção
-                        </button>
-                        <button type="button" onclick="window.gogSelectNew()" class="btn-small"
-                            style="flex: 1; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">
-                            <i class="fa-solid fa-sparkles"></i> Só Novos
-                        </button>
-                    </div>
-
-                    <!-- Preview Stats -->
-                    <div id="gogPreviewStats" class="hidden"
-                        style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-around; text-align: center;">
-                            <div>
-                                <div id="gogStatTotal"
-                                    style="font-size: 1.5rem; font-weight: bold; color: var(--primary); font-family: var(--font-num);">
-                                    0</div>
-                                <div style="font-size: 0.7rem; color: #888;">Total</div>
-                            </div>
-                            <div>
-                                <div id="gogStatNew"
-                                    style="font-size: 1.5rem; font-weight: bold; color: var(--success); font-family: var(--font-num);">
-                                    0</div>
-                                <div style="font-size: 0.7rem; color: #888;">Novos</div>
-                            </div>
-                            <div>
-                                <div id="gogStatDuplicate"
-                                    style="font-size: 1.5rem; font-weight: bold; color: #f59e0b; font-family: var(--font-num);">
-                                    0</div>
-                                <div style="font-size: 0.7rem; color: #888;">Duplicados</div>
-                            </div>
-                            <div>
-                                <div id="gogStatSelected"
-                                    style="font-size: 1.5rem; font-weight: bold; color: #3b82f6; font-family: var(--font-num);">
-                                    0</div>
-                                <div style="font-size: 0.7rem; color: #888;">Selecionados</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Progress Indicator -->
-                <div id="importProgress" class="hidden" style="margin: 20px 0;">
-                    <div
-                        style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; text-align: center;">
-                        <div class="spinner" style="width: 40px; height: 40px; margin: 0 auto 15px;"></div>
-                        <p id="importProgressText" style="color: var(--secondary); margin: 0; font-weight: 600;">
-                            Conectando à Steam...
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Import Results -->
-                <div id="importResults" class="hidden" style="margin: 20px 0;">
-                    <div
-                        style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; padding: 15px;">
-                        <h4 style="color: var(--success); margin: 0 0 10px 0;">
-                            <i class="fa-solid fa-check-circle"></i> Importação Concluída!
-                        </h4>
-                        <div id="importResultsText"></div>
-                    </div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="modal-actions" style="display:flex; flex-direction:column; gap:10px;">
-                    <button id="btnStartImport" class="btn-primary" style="width: 100%;">
-                        <i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA
-                    </button>
-
-                    <!-- Botão de deletar para Steam -->
-                    <div id="steamDeleteSection">
-                        <button onclick="window.handleResetSteam()" class="btn-danger" style="width: 100%;">
-                            <i class="fa-solid fa-trash"></i> REMOVER JOGOS STEAM
-                        </button>
-                    </div>
-
-                    <!-- Botão de deletar para GOG Galaxy (aparece após carregar) -->
-                    <div id="gogDeleteSection" class="hidden">
-                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 5px;">
-                            <label style="display: block; margin-bottom: 8px; font-size: 0.8rem; color: #888;">
-                                <i class="fa-solid fa-trash-can"></i> Remover jogos importados:
-                            </label>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <select id="gogDeletePlatformSelect" class="styled-select"
-                                    style="flex: 1; min-width: 150px;">
-                                    <option value="">Selecione uma plataforma</option>
-                                </select>
-                                <button onclick="window.handleDeleteGogPlatform()" class="btn-danger"
-                                    style="padding: 8px 16px;">
-                                    <i class="fa-solid fa-trash"></i> REMOVER
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- MODAL: UPGRADE PRO -->
@@ -1075,7 +795,7 @@
             }
         };
     </script>
-    <!-- BLOCKCHAIN EXPLORER MODAL REMOVED -->
+    <!-- Scripts -->
+    <script src="js/services/hltbService.js"></script>
 </body>
-
 </html>

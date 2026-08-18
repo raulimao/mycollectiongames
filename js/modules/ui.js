@@ -10,10 +10,6 @@ const getDOM = () => ({
     modal: document.getElementById('gameModal'),
     filterBadge: document.getElementById('chartFilterBadge'),
     filterName: document.getElementById('filterName'),
-    xpContainer: document.getElementById('xpContainer'),
-    xpBar: document.getElementById('xpProgressBar'),
-    xpText: document.getElementById('xpText'),
-    levelBadge: document.getElementById('userLevelBadge'),
     headerActions: document.getElementById('headerActions'),
     authActions: document.getElementById('authActions'),
     userAvatar: document.getElementById('userAvatar'),
@@ -193,8 +189,6 @@ export const renderApp = (state) => {
     // This ensures that "Collection" tab shows only Collection items, excluding Wishlist/Sold.
     const chartData = filteredGames;
     renderChart(chartData, state.chartMode, activeFilter, statsSource); // 1st arg: data to visualize, 4th arg: global context (for DNA)
-
-    renderXP(statsSource);
 };
 
 // --- ADVANCED FILTERS HELPER ---
@@ -237,13 +231,15 @@ export const applyAdvancedFilters = (games, filters) => {
         });
     }
 
-    // Price Range
+    // Price Range — only filter if user changed from defaults (0-10000)
     if (filters.priceRange) {
         const [min, max] = filters.priceRange;
-        filtered = filtered.filter(g => {
-            const price = g.price_paid || 0;
-            return price >= min && price <= max;
-        });
+        if (min > 0 || max < 10000) {
+            filtered = filtered.filter(g => {
+                const price = g.price_paid || 0;
+                return price >= min && price <= max;
+            });
+        }
     }
 
     // Metacritic Range - Only filter if user changed from defaults
@@ -258,10 +254,9 @@ export const applyAdvancedFilters = (games, filters) => {
         }
     }
 
-    // Playtime Range
+    // Playtime Range — only filter if user changed from defaults (0-500)
     if (filters.timeRange) {
         const [min, max] = filters.timeRange;
-        // Only apply if active
         if (min > 0 || max < 500) {
             filtered = filtered.filter(g => {
                 if (!g.tags) return false;
@@ -322,16 +317,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
         const visitorStats = state.allGamesStats || [];
         const totalGames = visitorStats.length;
 
-        // Calculate XP for visited user (SAME FORMULA as renderXP)
-        const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
-        let visitorXP = 0;
-        visitorStats.forEach(g => visitorXP += (XP_TABLE[g.status] || 0));
-
-        const XP_PER_LEVEL = 2000;
-        const visitorLevel = Math.floor(visitorXP / XP_PER_LEVEL) + 1;
-        const xpInCurrentLevel = visitorXP % XP_PER_LEVEL;
-        const xpForNextLevel = XP_PER_LEVEL;
-        const xpPercentage = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
+        
 
         centerHtml = `
             <div style="display:flex; align-items:center; gap:20px">
@@ -342,16 +328,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
                     </div>
                 </div>
                 
-                <!-- Visitor XP Display -->
-                <div style="min-width: 180px; border-left:1px solid rgba(255,255,255,0.1); padding-left:20px;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px; align-items:baseline">
-                        <span style="color:var(--primary); font-weight:bold; font-size:1rem; font-family:var(--font-num)">LVL ${visitorLevel}</span>
-                        <span style="font-size:0.7rem; color:#666">${xpInCurrentLevel} / ${xpForNextLevel} XP</span>
-                    </div>
-                    <div style="width:100%; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden">
-                        <div style="width: ${xpPercentage}%; height:100%; background:linear-gradient(90deg, var(--primary), #a855f7); transition: width 0.5s ease;"></div>
-                    </div>
-                </div>
+                
                 
                 <div style="display:flex; gap:15px; border-left:1px solid rgba(255,255,255,0.1); padding-left:20px; align-items:center">
                     <div title="Seguidores" onclick="window.openNetwork('followers')" style="cursor:pointer; text-align:center">
@@ -369,22 +346,10 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
             </div>
         `;
     } else if (currentUser) {
-        // OWNER MODE: Stats + XP Bar (Moved from Left)
-        const xpStructure = `
-            <div id="xpContainer" class="xp-display" style="min-width: 180px; margin-right:20px;">
-                <div class="xp-info" style="display:flex; justify-content:space-between; margin-bottom:5px; align-items:baseline">
-                    <span class="level-badge" id="userLevelBadge" style="color:var(--primary); font-weight:bold; font-size:1rem; font-family:var(--font-num)">LVL 1</span>
-                    <span class="xp-label" id="xpText" style="font-size:0.7rem; color:#666">0 / 1000 XP</span>
-                </div>
-                <div class="xp-bar-bg" style="width:100%; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden">
-                    <div id="xpProgressBar" class="xp-bar-fill" style="width: 0%; height:100%; background:linear-gradient(90deg, var(--primary), #a855f7); transition: width 0.5s ease;"></div>
-                </div>
-            </div>
-        `;
+        // OWNER MODE: Stats
 
         centerHtml = `
             <div style="display:flex; align-items:center;">
-                ${xpStructure}
                 <div style="display:flex; gap:15px; border-left:1px solid rgba(255,255,255,0.1); padding-left:20px; align-items:center">
                      <div title="Seguidores" onclick="window.openNetwork('followers')" style="cursor:pointer; text-align:center">
                         <strong style="color:white; display:block; line-height:1; font-size:1.1rem">${followers_count}</strong>
@@ -400,13 +365,7 @@ const renderHeader = (state, DOM, currentUser, isShared) => {
     }
 
     if (DOM.headerActions) DOM.headerActions.innerHTML = centerHtml;
-    // IMPORTANT: Re-bind DOM elements for XP logic since we just destroyed/recreated them
-    if (!isShared && currentUser) {
-        DOM.xpContainer = document.getElementById('xpContainer');
-        DOM.xpBar = document.getElementById('xpProgressBar');
-        DOM.xpText = document.getElementById('xpText');
-        DOM.levelBadge = document.getElementById('userLevelBadge');
-    }
+    
 
     // 2. RIGHT SECTION (User Profile & Actions)
     let rightHtml = '';
@@ -772,24 +731,7 @@ const renderFeed = (feedItems, userLikes = []) => {
     DOM.grid.appendChild(feedContainer);
 };
 
-const renderXP = (allGames) => {
-    const DOM = getDOM();
-    if (!DOM.xpContainer || !DOM.xpBar) return;
-    const XP_TABLE = { 'Platinado': 2000, 'Jogo Zerado': 1000, 'Jogando': 200, 'Coleção': 100, 'Backlog': 20, 'Vendido': 40, 'À venda': 40, 'Desejado': 0 };
-    let totalXP = 0;
-    allGames.forEach(g => totalXP += (XP_TABLE[g.status] || 0));
-    const XP_PER_LEVEL = 2000;
-    const currentLevel = Math.floor(totalXP / XP_PER_LEVEL) + 1;
-    const xpInCurrentLevel = totalXP % XP_PER_LEVEL;
-    const progressPercent = (xpInCurrentLevel / XP_PER_LEVEL) * 100;
-
-    DOM.levelBadge.innerText = `LVL ${currentLevel}`;
-    DOM.xpText.innerText = `${xpInCurrentLevel} / ${XP_PER_LEVEL} XP`;
-    DOM.xpBar.style.width = `${progressPercent}%`;
-    if (currentLevel >= 20) DOM.xpBar.style.background = 'linear-gradient(90deg, #ffd700, #ff3366)';
-    else if (currentLevel >= 10) DOM.xpBar.style.background = 'linear-gradient(90deg, #0ea5e9, #d946ef)';
-    else DOM.xpBar.style.background = 'linear-gradient(90deg, #00ff9d, #0ea5e9)';
-};
+;
 
 const renderGrid = (visibleGames, isShared, totalCount = 0) => {
     const DOM = getDOM();
@@ -1546,3 +1488,5 @@ if (closeBtn) {
         document.getElementById('explorerModal').classList.add('hidden');
     };
 }
+
+

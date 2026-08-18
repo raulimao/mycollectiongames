@@ -1,7 +1,5 @@
 import { supabase, AuthService } from './services/supabase.js';
 import { GameService, SocialService, PriceService } from './services/api.js';
-import { ImportService } from './services/importer.js';
-import { GogImportService } from './services/gogImporter.js';
 import { SubscriptionService } from './services/subscriptionService.js';
 import { HLTBService } from './services/hltbService.js';
 import { appStore } from './modules/store.js';
@@ -12,6 +10,7 @@ import { Diagnostics } from './modules/diagnostics.js';
 window.GameVaultDebug = Diagnostics;
 import { renderApp, showToast, toggleModal, exportData, renderUserList, applyAdvancedFilters } from './modules/ui.js';
 import { initMobileTouchHandlers, handleOrientationChange, initNetworkDetection } from './modules/mobile.js';
+import './modules/tv.js';
 
 let editingId = null;
 let isInitializing = false;
@@ -427,9 +426,24 @@ const setupGlobalEvents = () => {
     safeClick('btnGoogle', () => AuthService.signInGoogle());
     safeClick('btnCloseModal', () => toggleModal(false));
     safeClick('btnExport', () => exportData());
-    safeClick('btnImport', () => handleImportClick());
     safeClick('btnCompare', () => handleCompareClick());
-    safeClick('btnStartImport', () => handleImportSubmit());
+
+    // --- FILTROS AVANÇADOS ---
+    safeClick('btnOpenFilters', () => {
+        const drawer = document.getElementById('filterDrawer');
+        const overlay = document.getElementById('filterOverlay');
+        if (drawer) drawer.classList.add('open');
+        if (overlay) overlay.classList.add('open');
+    });
+
+    const closeFilters = () => {
+        const drawer = document.getElementById('filterDrawer');
+        const overlay = document.getElementById('filterOverlay');
+        if (drawer) drawer.classList.remove('open');
+        if (overlay) overlay.classList.remove('open');
+    };
+    safeClick('fdCloseBtn', closeFilters);
+    safeClick('filterOverlay', closeFilters);
 
     document.addEventListener('click', (e) => {
         const { isNotificationsOpen } = appStore.get();
@@ -508,8 +522,10 @@ const setupGlobalEvents = () => {
 // --- ADVANCED FILTERS SETUP ---
 const setupAdvancedFilters = () => {
     // 1. Initial Render & Listener for Data Changes
+    let lastGamesLength = -1;
     appStore.subscribe((state) => {
-        if (state.allGamesStats && state.allGamesStats.length > 0) {
+        if (state.allGamesStats && state.allGamesStats.length > 0 && state.allGamesStats.length !== lastGamesLength) {
+            lastGamesLength = state.allGamesStats.length;
             // First, ensure all buttons exist based on FULL dataset
             renderFacetButtons(state.allGamesStats, 'platformFilters', 'platform');
             renderFacetButtons(state.allGamesStats, 'statusFilters', 'status');
@@ -877,6 +893,10 @@ const updateFacets = () => {
     // Calculate what the result WOULD be with current DOM selection
     const subset = applyAdvancedFilters(allGames, currentDOMFilters);
 
+    // AUTO-APPLY FILTERS IMMEDIATELY (Restoring original instant-apply behavior)
+    appStore.setState({ advancedFilters: currentDOMFilters, paginationLimit: 16 });
+    updateFilterBadge(currentDOMFilters);
+
     // Update Apply Button Text
     const btnApply = document.getElementById('btnApplyFilters');
     if (btnApply) {
@@ -946,7 +966,7 @@ const getFiltersFromDOM = () => {
         tags: Array.from(document.querySelectorAll('#tagFilters .tag-filter-btn.active')).map(b => b.dataset.tag),
         priceRange: [
             parseInt(document.getElementById('inputPriceMinNumber')?.value || document.getElementById('filterPriceMin')?.value || 0),
-            parseInt(document.getElementById('inputPriceMaxNumber')?.value || document.getElementById('filterPriceMax')?.value || 5000)
+            parseInt(document.getElementById('inputPriceMaxNumber')?.value || document.getElementById('filterPriceMax')?.value || 10000)
         ],
         metacriticRange: [
             parseInt(document.getElementById('inputMcMinNumber')?.value || document.getElementById('filterMcMin')?.value || 0),
@@ -1230,12 +1250,37 @@ const handleFormSubmit = async (e) => {
     finally { btn.innerText = oldText; btn.disabled = false; }
 };
 
-const handleDelete = async () => {
-    if (confirm("Excluir jogo?")) {
+let deleteConfirmTimeout = null;
+const handleDelete = async (e) => {
+    const btn = e.target;
+    
+    // Primeiro clique: Pede confirmação visual no próprio botão
+    if (btn.innerText.trim() !== "CERTEZA?") {
+        const originalText = btn.innerHTML;
+        btn.innerText = "CERTEZA?";
+        
+        clearTimeout(deleteConfirmTimeout);
+        deleteConfirmTimeout = setTimeout(() => {
+            btn.innerHTML = originalText;
+        }, 3000);
+        return;
+    }
+
+    // Segundo clique: Executa a exclusão
+    clearTimeout(deleteConfirmTimeout);
+    btn.innerText = "EXCLUINDO...";
+    
+    try {
         await GameService.deleteGame(editingId);
         toggleModal(false);
-        const { user } = appStore.get(); if (user) loadData(user.id);
-        showToast("Excluído.");
+        const { user } = appStore.get(); 
+        if (user) loadData(user.id);
+        showToast("Excluído com sucesso!");
+    } catch (error) {
+        console.error("Erro ao excluir jogo:", error);
+        showToast("Erro ao excluir: " + (error.message || "Desconhecido"), "error");
+    } finally {
+        btn.innerText = "Excluir";
     }
 };
 
@@ -1476,783 +1521,6 @@ window.resetCompareModal = () => {
     document.getElementById('compareBackBtn').classList.add('hidden');
     compareData = { myGames: [], friendGames: [], friendProfile: null };
 };
-
-// ===== IMPORT HANDLERS =====
-
-const handleImportClick = () => {
-    const { user } = appStore.get();
-    if (!user) {
-        showToast("Faça login para importar jogos!", "error");
-        return;
-    }
-
-    // Reset modal state
-    document.getElementById('importProgress').classList.add('hidden');
-    document.getElementById('importResults').classList.add('hidden');
-    document.getElementById('btnStartImport').disabled = false;
-
-    // Load saved credentials from localStorage
-    const savedApiKey = localStorage.getItem('steam_api_key');
-    const savedSteamId = localStorage.getItem('steam_id');
-    const lastImport = localStorage.getItem('last_steam_import');
-
-    if (savedApiKey) {
-        document.getElementById('steamApiKey').value = savedApiKey;
-        document.getElementById('rememberApiKey').checked = true;
-        // Trigger validation
-        validateApiKey(savedApiKey);
-    }
-
-    if (savedSteamId) {
-        document.getElementById('steamId').value = savedSteamId;
-        document.getElementById('steamIdHint').innerHTML = `<i class="fa-solid fa-clock-rotate-left"></i> Último Steam ID usado`;
-        // Trigger validation
-        validateSteamId(savedSteamId);
-    }
-
-    // Show last import info
-    if (lastImport) {
-        try {
-            const importData = JSON.parse(lastImport);
-            const importDate = new Date(importData.date);
-            const now = new Date();
-            const daysDiff = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
-
-            let timeText;
-            if (daysDiff === 0) {
-                timeText = 'Hoje';
-            } else if (daysDiff === 1) {
-                timeText = 'Ontem';
-            } else if (daysDiff < 7) {
-                timeText = `há ${daysDiff} dias`;
-            } else if (daysDiff < 30) {
-                const weeks = Math.floor(daysDiff / 7);
-                timeText = `há ${weeks} semana${weeks > 1 ? 's' : ''}`;
-            } else {
-                const months = Math.floor(daysDiff / 30);
-                timeText = `há ${months} mês${months > 1 ? 'es' : ''}`;
-            }
-
-            document.getElementById('lastImportText').textContent = `${timeText} (${importData.count} jogos)`;
-            document.getElementById('lastImportInfo').classList.remove('hidden');
-        } catch (e) {
-            console.error('Failed to parse last import data:', e);
-        }
-    }
-
-    // Setup validation listeners
-    setupValidationListeners();
-
-    // Setup Steam ID detector
-    setupSteamIdDetector();
-
-    // Show modal
-    document.getElementById('importModal').classList.remove('hidden');
-};
-
-const handleImportSubmit = async () => {
-    await handleSteamImport();
-};
-
-
-// --- IMPORT LOGIC ---
-let currentImportCandidates = [];
-
-// Helpers accessible by HTML
-window.updateImportCount = () => {
-    const checked = document.querySelectorAll('.import-checkbox:checked').length;
-    const btn = document.getElementById('btnStartImport');
-    if (btn) btn.innerHTML = `<i class="fa-solid fa-check"></i> CONFIRMAR IMPORTAÇÃO (${checked})`;
-};
-
-window.selectAllImport = (source) => {
-    document.querySelectorAll('.import-checkbox').forEach(cb => cb.checked = source.checked);
-    window.updateImportCount();
-};
-
-const handleSteamImport = async () => {
-    const apiKey = document.getElementById('steamApiKey').value.trim();
-    const steamId = document.getElementById('steamId').value.trim();
-    const rememberKey = document.getElementById('rememberApiKey')?.checked;
-
-    // Validation
-    if (!apiKey) { showToast("Insira sua Steam API Key", "error"); return; }
-    if (!steamId || !/^[0-9]{17}$/.test(steamId)) { showToast("Steam ID inválido", "error"); return; }
-
-    const btn = document.getElementById('btnStartImport');
-    const progressDiv = document.getElementById('importProgress');
-    const resultsDiv = document.getElementById('importResults');
-    const progressText = document.getElementById('importProgressText');
-    const resultsText = document.getElementById('importResultsText');
-
-    // Check if we are in "Confirm" mode (button text changed)
-    const isConfirmMode = btn.getAttribute('data-mode') === 'confirm';
-
-    if (isConfirmMode) {
-        // --- PHASE 2: CONFIRM IMPORT ---
-        try {
-            // 1. READ SELECTION BEFORE CLEARING UI
-            const checkboxes = document.querySelectorAll('.import-checkbox:checked');
-            const selectedAppIds = Array.from(checkboxes).map(cb => cb.value);
-
-            if (selectedAppIds.length === 0) {
-                showToast("Selecione pelo menos um jogo.", "warning");
-                return; // Return early, DO NOT reset UI
-            }
-
-            // 2. NOW WE CAN RESET UI FOR PROGRESS
-            btn.disabled = true;
-            progressDiv.classList.remove('hidden');
-            resultsDiv.classList.add('hidden');
-            // resultsText.innerHTML = ''; // Optional: keep list or clear. Let's clear to show progress.
-
-            const gamesToImport = currentImportCandidates.filter(g => selectedAppIds.includes(String(g.steamAppId)));
-
-            progressText.textContent = `Importando ${gamesToImport.length} jogos...`;
-
-            const count = await ImportService.confirmSteamImport(gamesToImport, apiKey, steamId, (p) => {
-                if (p.stage === 'enriching') progressText.textContent = `Enriquecendo dados (${p.current}/${p.total}): ${p.game}`;
-                if (p.stage === 'saving') progressText.textContent = `Salvando no cofre...`;
-            });
-
-            // Success
-            console.log(`[ImportSuccess] Import completed with count: ${count}`);
-            try {
-                showToast(`${count} jogos importados!`, "success");
-
-                // Close Import Modal Explicitly
-                document.getElementById('importModal').classList.add('hidden');
-
-                // Reset Internal Modal State
-                progressDiv.classList.add('hidden');
-                resultsDiv.classList.add('hidden');
-
-                const { user } = appStore.get();
-                if (user) await loadData(user.id); // Add await to ensure data loads
-            } catch (uiError) {
-                console.error("[ImportSuccess] UI Update Failed:", uiError);
-                showToast("Importação concluída, mas erro na interface. Recarregue a página.", "warning");
-            }
-
-            // Clean state
-            currentImportCandidates = [];
-            btn.removeAttribute('data-mode');
-            btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
-            btn.className = 'btn-primary';
-            btn.style.background = ''; // Clear overrides
-            btn.style.boxShadow = '';
-
-        } catch (error) {
-            console.error(error);
-            showToast("Erro na importação: " + error.message, "error");
-            // If error, restore UI so user can try again? 
-            // Ideally we should catch specific errors. For now, just hide progress.
-            progressDiv.classList.add('hidden');
-            resultsDiv.classList.remove('hidden'); // Show list again
-            btn.disabled = false;
-        }
-
-    } else {
-        // --- PHASE 1: FETCH PREVIEW ---
-        // UI Reset
-        btn.disabled = true;
-        progressDiv.classList.remove('hidden');
-        resultsDiv.classList.add('hidden');
-        resultsText.innerHTML = '';
-
-        try {
-            progressText.textContent = 'Conectando à Steam e verificando biblioteca...';
-
-            // Generate list
-            const games = await ImportService.getSteamPreview(steamId, apiKey);
-            currentImportCandidates = games;
-
-            if (games.length === 0) {
-                showToast("Nenhum jogo encontrado.", "info");
-                btn.disabled = false;
-                progressDiv.classList.add('hidden');
-                return;
-            }
-
-            // Save Credentials if requested
-            if (rememberKey) localStorage.setItem('steam_api_key', apiKey);
-            else localStorage.removeItem('steam_api_key');
-            localStorage.setItem('steam_id', steamId);
-
-            // Render Preview List
-            renderImportPreview(games, resultsText);
-
-            // Switch Button to Confirm Mode
-            resultsDiv.classList.remove('hidden');
-            progressDiv.classList.add('hidden');
-            btn.innerHTML = `<i class="fa-solid fa-check"></i> CONFIRMAR IMPORTAÇÃO (0)`;
-            btn.setAttribute('data-mode', 'confirm');
-
-            // FIX: Reuse btn-primary (shape/border) but override color to Green
-            btn.className = 'btn-primary';
-            btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-            btn.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.3)';
-            btn.style.borderColor = 'transparent'; // Ensure no border issues
-            btn.disabled = false;
-
-        } catch (error) {
-            console.error(error);
-            showToast("Erro ao buscar: " + error.message, "error");
-            progressDiv.classList.add('hidden');
-        } finally {
-            btn.disabled = false;
-        }
-    }
-};
-
-window.handleResetSteam = async () => {
-    if (!confirm("Isso apagará TODOS os jogos importados da Steam.\n\nTem certeza que deseja recomeçar?")) return;
-
-    try {
-        const { user } = appStore.get();
-        if (!user) return;
-
-        showToast("Removendo jogos...", "info");
-        const count = await GameService.deleteByPlatform(user.id, 'Steam');
-
-        showToast(`${count} jogos removidos.`, "success");
-        loadData(user.id);
-
-        // Reset button state
-        const btn = document.getElementById('btnStartImport');
-        if (btn) {
-            btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
-            btn.removeAttribute('data-mode');
-            btn.className = 'btn-primary';
-            // Clear manual overrides
-            btn.style.background = '';
-            btn.style.boxShadow = '';
-        }
-        document.getElementById('importResultsText').innerHTML = '';
-        document.getElementById('importResults').classList.add('hidden');
-
-
-    } catch (e) {
-        console.error(e);
-        showToast("Erro ao remover: " + e.message, "error");
-    }
-};
-
-const renderImportPreview = (games, container) => {
-    // Generate HTML
-    let html = `
-        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-             <label style="color:white; cursor:pointer;"><input type="checkbox" onchange="window.selectAllImport(this)"> Selecionar Tudo</label>
-             <span style="color:#888; font-size:0.8rem">${games.length} jogos encontrados</span>
-        </div>
-        <div class="import-list" style="max-height:300px; overflow-y:auto; border:1px solid #333; border-radius:8px; background:rgba(0,0,0,0.2);">`;
-
-    games.forEach(g => {
-        const isDup = g.isDuplicate;
-        html += `
-            <div style="display:flex; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); ${isDup ? 'opacity:0.5;' : ''}">
-                <input type="checkbox" class="import-checkbox" value="${g.steamAppId}" onchange="window.updateImportCount()" ${!isDup ? 'checked' : ''} style="margin-right:10px; width:16px; height:16px;">
-                <img src="${g.image_url}" style="width:32px; height:48px; object-fit:cover; margin-right:10px; border-radius:4px;" onerror="this.style.display='none'">
-                <div style="flex:1;">
-                    <div style="color:${isDup ? '#888' : 'white'}; font-weight:bold; font-size:0.9rem;">${g.title}</div>
-                    <div style="color:#666; font-size:0.75rem;">${(g.playtime_minutes / 60).toFixed(1)}h jogadas ${isDup ? '• <span style="color:#d4af37">JÁ NA COLEÇÃO</span>' : '• NOVO'}</div>
-                </div>
-            </div>
-        `;
-    });
-
-    html += `</div>`;
-    container.innerHTML = html;
-
-    // Initial count update
-    window.updateImportCount();
-};
-
-
-const showImportResults = (result, source) => {
-    const progressDiv = document.getElementById('importProgress');
-    const resultsDiv = document.getElementById('importResults');
-    const resultsText = document.querySelector('#importResultsText');
-
-    progressDiv.classList.add('hidden');
-    resultsDiv.classList.remove('hidden');
-
-    resultsText.innerHTML = `
-        <p style="margin: 5px 0; color: #ddd;">
-            <strong style="color: var(--success);">${result.imported}</strong> jogos importados
-        </p>
-        <p style="margin: 5px 0; color: #999; font-size: 0.85rem;">
-            ${result.totalFound} jogos no ${source}<br>
-            ${result.duplicates} já estavam na sua coleção
-            ${result.invalid ? `<br>${result.invalid} inválidos (pulados)` : ''}
-        </p>
-    `;
-
-    showToast(`${result.imported} jogos importados com sucesso!`, "success");
-
-    // Reload data
-    const { user } = appStore.get();
-    if (user) {
-        setTimeout(() => {
-            loadData(user.id);
-            setTimeout(() => {
-                document.getElementById('importModal').classList.add('hidden');
-            }, 3000);
-        }, 1000);
-    }
-};
-
-const handleImportError = (error, source) => {
-    const progressDiv = document.getElementById('importProgress');
-    const btn = document.getElementById('btnStartImport');
-
-    progressDiv.classList.add('hidden');
-
-    let errorMsg = `Erro ao importar de ${source}.`;
-    if (error.message.includes('perfil privado') || error.message.includes('Nenhum jogo')) {
-        errorMsg = 'Perfil privado ou sem jogos.';
-    } else if (error.message.includes('Steam API')) {
-        errorMsg = 'Erro ao conectar com Steam API.';
-    } else if (error.message.includes('JSON')) {
-        errorMsg = 'Formato JSON inválido.';
-        errorMsg = 'Formato CSV inválido.';
-    }
-
-    showToast(errorMsg, "error");
-    btn.disabled = false;
-};
-
-// ===================================================================================================
-// GOG GALAXY IMPORT HANDLERS
-// ===================================================================================================
-
-let gogGalaxyData = null;
-let gogPreviewGames = [];
-let gogAvailablePlatforms = [];
-
-// Handler para mudança de plataforma de importação
-window.handleImportPlatformChange = (value) => {
-    const steamConfig = document.getElementById('steamConfig');
-    const gogConfig = document.getElementById('gogGalaxyConfig');
-    const btnStartImport = document.getElementById('btnStartImport');
-    const steamDeleteSection = document.getElementById('steamDeleteSection');
-    const gogDeleteSection = document.getElementById('gogDeleteSection');
-
-    // Reset estado do GOG Galaxy quando muda de plataforma
-    resetGogGalaxyState();
-
-    if (value === 'goggalaxy') {
-        steamConfig.classList.add('hidden');
-        gogConfig.classList.remove('hidden');
-        steamDeleteSection.classList.add('hidden');
-        gogDeleteSection.classList.remove('hidden');
-        btnStartImport.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
-        btnStartImport.onclick = () => handleGogGalaxyPreview();
-        btnStartImport.style.background = '';
-        btnStartImport.disabled = false;
-    } else {
-        steamConfig.classList.remove('hidden');
-        gogConfig.classList.add('hidden');
-        steamDeleteSection.classList.remove('hidden');
-        gogDeleteSection.classList.add('hidden');
-        btnStartImport.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR BIBLIOTECA';
-        btnStartImport.onclick = () => handleImportSubmit();
-        btnStartImport.style.background = '';
-        btnStartImport.disabled = false;
-    }
-};
-
-// Reset do estado do GOG Galaxy
-const resetGogGalaxyState = () => {
-    gogGalaxyData = null;
-    gogPreviewGames = [];
-    gogAvailablePlatforms = [];
-
-    // Reset UI elements se existirem
-    const jsonInput = document.getElementById('gogJsonInput');
-    if (jsonInput) jsonInput.value = '';
-
-    const platformSelection = document.getElementById('gogPlatformSelection');
-    if (platformSelection) platformSelection.classList.add('hidden');
-
-    const quickActions = document.getElementById('gogQuickActions');
-    if (quickActions) quickActions.classList.add('hidden');
-
-    const previewStats = document.getElementById('gogPreviewStats');
-    if (previewStats) previewStats.classList.add('hidden');
-
-    const platformCheckboxes = document.getElementById('gogPlatformCheckboxes');
-    if (platformCheckboxes) platformCheckboxes.innerHTML = '';
-
-    // Reset stats
-    const stats = ['gogStatTotal', 'gogStatNew', 'gogStatDuplicate', 'gogStatSelected'];
-    stats.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '0';
-    });
-};
-
-// Handler para upload de arquivo JSON
-window.handleGogFileUpload = (input) => {
-    const file = input.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        document.getElementById('gogJsonInput').value = e.target.result;
-        showToast('Arquivo carregado! Clique em "Carregar e Visualizar"', 'success');
-    };
-    reader.onerror = () => {
-        showToast('Erro ao ler arquivo', 'error');
-    };
-    reader.readAsText(file);
-};
-
-// Handler para carregar e visualizar jogos do GOG Galaxy
-const handleGogGalaxyPreview = async () => {
-    // FEATURE GATING: Verificar se usuário tem acesso ao GOG Import
-    const { user } = appStore.get();
-    if (user) {
-        const canAccess = await SubscriptionService.canAccess(user.id, 'hasGogImport');
-        if (!canAccess) {
-            window.showUpgradeModal('Importação GOG Galaxy/Epic');
-            return;
-        }
-    }
-
-    const jsonInput = document.getElementById('gogJsonInput').value.trim();
-
-    if (!jsonInput) {
-        showToast('Cole o JSON do relatório GOG Galaxy primeiro', 'warning');
-        return;
-    }
-
-    const btn = document.getElementById('btnStartImport');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> CARREGANDO...';
-
-    try {
-        gogGalaxyData = JSON.parse(jsonInput);
-
-        // Mostrar seleção de plataformas
-        gogAvailablePlatforms = GogImportService.getAvailablePlatforms(gogGalaxyData);
-
-        if (gogAvailablePlatforms.length === 0) {
-            showToast('Nenhuma plataforma encontrada no JSON', 'warning');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
-            return;
-        }
-
-        renderGogPlatformSelection(gogAvailablePlatforms);
-        updateGogDeletePlatformOptions();
-
-        // Mostrar stats iniciais
-        document.getElementById('gogPlatformSelection').classList.remove('hidden');
-        document.getElementById('gogQuickActions').classList.remove('hidden');
-        document.getElementById('gogPreviewStats').classList.remove('hidden');
-
-        // Atualizar botão
-        btn.innerHTML = '<i class="fa-solid fa-download"></i> IMPORTAR SELECIONADOS';
-        btn.onclick = () => handleGogGalaxyImport();
-        btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-        btn.disabled = false;
-
-        showToast(`${gogAvailablePlatforms.reduce((a, p) => a + p.count, 0)} jogos encontrados!`, 'success');
-
-    } catch (error) {
-        console.error('Erro ao parsear JSON:', error);
-        showToast('JSON inválido. Verifique o formato do arquivo.', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
-    }
-};
-
-// Atualiza opções do dropdown de deletar plataforma
-const updateGogDeletePlatformOptions = () => {
-    const select = document.getElementById('gogDeletePlatformSelect');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Selecione uma plataforma</option>';
-
-    const platformTags = [
-        { value: 'Xbox', label: '🟢 Xbox' },
-        { value: 'Epic Games', label: '⚫ Epic Games' },
-        { value: 'Steam', label: '🔵 Steam' },
-        { value: 'GOG', label: '🟣 GOG' },
-        { value: 'Origin', label: '🟠 Origin' },
-        { value: 'Ubisoft', label: '🔴 Ubisoft' },
-        { value: 'Battle.net', label: '🔵 Battle.net' },
-    ];
-
-    platformTags.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.value;
-        opt.textContent = p.label;
-        select.appendChild(opt);
-    });
-};
-
-// Renderiza checkboxes de seleção de plataformas
-const renderGogPlatformSelection = (platforms) => {
-    const container = document.getElementById('gogPlatformCheckboxes');
-
-    const platformIcons = {
-        'Xbox One': { icon: 'fa-xbox', color: '#107c10', bg: 'rgba(16, 124, 16, 0.2)' },
-        'Epic Games': { icon: 'fa-square', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.2)' },
-        'Steam': { icon: 'fa-steam', color: '#66c0f4', bg: 'rgba(102, 192, 244, 0.2)' },
-        'GOG': { icon: 'fa-compact-disc', color: '#86328a', bg: 'rgba(134, 50, 138, 0.2)' },
-        'Origin': { icon: 'fa-gamepad', color: '#f56c2d', bg: 'rgba(245, 108, 45, 0.2)' },
-        'Ubisoft': { icon: 'fa-gamepad', color: '#0070ff', bg: 'rgba(0, 112, 255, 0.2)' },
-        'Battle.net': { icon: 'fa-gamepad', color: '#148eff', bg: 'rgba(20, 142, 255, 0.2)' },
-    };
-
-    container.innerHTML = platforms.map(p => {
-        const config = platformIcons[p.name] || { icon: 'fa-gamepad', color: '#888', bg: 'rgba(100,100,100,0.2)' };
-        return `
-            <label class="platform-checkbox" style="
-                display: flex; 
-                align-items: center; 
-                gap: 8px; 
-                padding: 8px 12px; 
-                background: ${config.bg}; 
-                border: 1px solid ${config.color}60; 
-                border-radius: 8px; 
-                cursor: pointer;
-                transition: all 0.2s;
-                user-select: none;
-            " onmouseover="this.style.transform='scale(1.02)'; this.style.borderColor='${config.color}'" 
-               onmouseout="this.style.transform='scale(1)'; this.style.borderColor='${config.color}60'">
-                <input type="checkbox" 
-                    class="gog-platform-cb" 
-                    value="${p.name}" 
-                    checked 
-                    onchange="window.updateGogPreview()"
-                    style="width: 18px; height: 18px; accent-color: ${config.color}; cursor: pointer;">
-                <i class="fa-brands ${config.icon}" style="color: ${config.color}; font-size: 1.1rem;"></i>
-                <span style="color: #ddd; font-size: 0.85rem; font-weight: 500;">${p.name}</span>
-                <span style="color: #aaa; font-size: 0.75rem; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 10px; margin-left: auto;">${p.count}</span>
-            </label>
-        `;
-    }).join('');
-
-    // Atualizar preview inicial
-    window.updateGogPreview();
-};
-
-// Atualiza preview com base nas plataformas selecionadas
-window.updateGogPreview = async () => {
-    if (!gogGalaxyData) {
-        console.warn('updateGogPreview chamado sem dados carregados');
-        return;
-    }
-
-    const selectedPlatforms = Array.from(document.querySelectorAll('.gog-platform-cb:checked'))
-        .map(cb => cb.value);
-
-    // Atualizar stats mesmo se vazio
-    if (selectedPlatforms.length === 0) {
-        gogPreviewGames = [];
-        document.getElementById('gogStatTotal').textContent = '0';
-        document.getElementById('gogStatNew').textContent = '0';
-        document.getElementById('gogStatDuplicate').textContent = '0';
-        document.getElementById('gogStatSelected').textContent = '0';
-        return;
-    }
-
-    try {
-        gogPreviewGames = await GogImportService.getGogPreview(gogGalaxyData, selectedPlatforms);
-
-        const total = gogPreviewGames.length;
-        const newGames = gogPreviewGames.filter(g => !g.isDuplicate).length;
-        const duplicates = gogPreviewGames.filter(g => g.isDuplicate).length;
-        const selected = gogPreviewGames.filter(g => g.selected).length;
-
-        document.getElementById('gogStatTotal').textContent = total;
-        document.getElementById('gogStatNew').textContent = newGames;
-        document.getElementById('gogStatDuplicate').textContent = duplicates;
-        document.getElementById('gogStatSelected').textContent = selected;
-
-    } catch (error) {
-        console.error('Erro ao atualizar preview:', error);
-        showToast('Erro ao processar dados', 'error');
-    }
-};
-
-// Selecionar todos os jogos
-window.gogSelectAll = () => {
-    if (!gogPreviewGames || gogPreviewGames.length === 0) {
-        showToast('Carregue os dados primeiro', 'warning');
-        return;
-    }
-    gogPreviewGames.forEach(g => g.selected = true);
-    document.getElementById('gogStatSelected').textContent = gogPreviewGames.length;
-    showToast(`${gogPreviewGames.length} jogos selecionados`, 'info');
-};
-
-// Limpar seleção
-window.gogSelectNone = () => {
-    if (!gogPreviewGames || gogPreviewGames.length === 0) {
-        showToast('Carregue os dados primeiro', 'warning');
-        return;
-    }
-    gogPreviewGames.forEach(g => g.selected = false);
-    document.getElementById('gogStatSelected').textContent = '0';
-    showToast('Seleção limpa', 'info');
-};
-
-// Selecionar apenas jogos novos
-window.gogSelectNew = () => {
-    if (!gogPreviewGames || gogPreviewGames.length === 0) {
-        showToast('Carregue os dados primeiro', 'warning');
-        return;
-    }
-    gogPreviewGames.forEach(g => g.selected = !g.isDuplicate);
-    const selected = gogPreviewGames.filter(g => g.selected).length;
-    document.getElementById('gogStatSelected').textContent = selected;
-
-    if (selected === 0) {
-        showToast('Todos os jogos já estão na sua coleção!', 'info');
-    } else {
-        showToast(`${selected} jogos novos selecionados`, 'success');
-    }
-};
-
-// Handler para deletar jogos de uma plataforma específica
-window.handleDeleteGogPlatform = async () => {
-    const select = document.getElementById('gogDeletePlatformSelect');
-    const platformTag = select.value;
-
-    if (!platformTag) {
-        showToast('Selecione uma plataforma para remover', 'warning');
-        return;
-    }
-
-    const { user } = appStore.get();
-    if (!user) {
-        showToast('Faça login primeiro', 'error');
-        return;
-    }
-
-    const confirmMsg = `Isso irá REMOVER TODOS os jogos com a tag "${platformTag}" da sua coleção.\n\nTem certeza?`;
-    if (!confirm(confirmMsg)) return;
-
-    try {
-        showToast(`Buscando jogos ${platformTag}...`, 'info');
-
-        // Buscar jogos com essa tag
-        const { data: games, error: fetchError } = await supabase
-            .from('games')
-            .select('id, tags')
-            .eq('user_id', user.id);
-
-        if (fetchError) throw fetchError;
-
-        // Filtrar jogos que têm a tag da plataforma
-        const gamesToDelete = games.filter(g => {
-            if (!g.tags) return false;
-            const tags = Array.isArray(g.tags) ? g.tags : JSON.parse(g.tags || '[]');
-            return tags.includes(platformTag);
-        });
-
-        if (gamesToDelete.length === 0) {
-            showToast(`Nenhum jogo com tag "${platformTag}" encontrado`, 'info');
-            return;
-        }
-
-        showToast(`Removendo ${gamesToDelete.length} jogos ${platformTag}...`, 'info');
-
-        // Deletar em batches de 50 para evitar erro 400 (URL muito longa)
-        const BATCH_SIZE = 50;
-        let deletedCount = 0;
-
-        for (let i = 0; i < gamesToDelete.length; i += BATCH_SIZE) {
-            const batch = gamesToDelete.slice(i, i + BATCH_SIZE);
-            const batchIds = batch.map(g => g.id);
-
-            const { error: deleteError } = await supabase
-                .from('games')
-                .delete()
-                .in('id', batchIds);
-
-            if (deleteError) {
-                console.error(`Erro no batch ${i / BATCH_SIZE + 1}:`, deleteError);
-                throw deleteError;
-            }
-
-            deletedCount += batch.length;
-
-            // Feedback de progresso para muitos jogos
-            if (gamesToDelete.length > BATCH_SIZE) {
-                showToast(`Removidos ${deletedCount}/${gamesToDelete.length}...`, 'info');
-            }
-        }
-
-        showToast(`${deletedCount} jogos ${platformTag} removidos!`, 'success');
-
-        // Recarregar dados
-        await loadData(user.id);
-
-        // Reset select
-        select.value = '';
-
-    } catch (error) {
-        console.error('Erro ao remover jogos:', error);
-        showToast('Erro ao remover: ' + (error.message || 'erro desconhecido'), 'error');
-    }
-};
-
-// Importar jogos selecionados do GOG Galaxy
-const handleGogGalaxyImport = async () => {
-    const gamesToImport = gogPreviewGames.filter(g => g.selected);
-
-    if (gamesToImport.length === 0) {
-        showToast('Selecione pelo menos um jogo para importar', 'warning');
-        return;
-    }
-
-    const btn = document.getElementById('btnStartImport');
-    const progressDiv = document.getElementById('importProgress');
-    const progressText = document.getElementById('importProgressText');
-
-    btn.disabled = true;
-    progressDiv.classList.remove('hidden');
-    progressText.textContent = `Importando ${gamesToImport.length} jogos...`;
-
-    try {
-        const count = await GogImportService.confirmGogImport(gamesToImport, (progress) => {
-            if (progress.stage === 'processing') {
-                progressText.textContent = `Processando (${progress.current}/${progress.total}): ${progress.game}`;
-            } else if (progress.stage === 'saving') {
-                progressText.textContent = 'Salvando no cofre...';
-            }
-        });
-
-        showToast(`${count} jogos importados com sucesso!`, 'success');
-
-        // Fechar modal e recarregar dados
-        document.getElementById('importModal').classList.add('hidden');
-
-        const { user } = appStore.get();
-        if (user) await loadData(user.id);
-
-        // Reset estado
-        resetGogGalaxyState();
-
-    } catch (error) {
-        console.error('Erro na importação:', error);
-        showToast('Erro na importação: ' + error.message, 'error');
-    } finally {
-        btn.disabled = false;
-        progressDiv.classList.add('hidden');
-        btn.innerHTML = '<i class="fa-solid fa-eye"></i> CARREGAR E VISUALIZAR';
-        btn.style.background = '';
-        btn.onclick = () => handleGogGalaxyPreview();
-    }
-};
-
-
-// ===================================================================================================
 // CLEANUP FEED
 // ===================================================================================================
 
@@ -2412,123 +1680,127 @@ const setupRawgSearch = () => {
                     div.appendChild(img);
                     div.appendChild(info);
 
-                    div.onclick = async () => {
-                        input.value = item.name;
-                        document.getElementById('inputImage').value = item.background_image || '';
+                    div.onclick = () => {
+                        try {
+                            // 1. FECHA A LISTA IMEDIATAMENTE (Sem delay para o usuário)
+                            apiDiv.classList.add('hidden');
 
-                        // --- NEW: AUTO-TAGGING (GENRES & SUBGENRES) ---
-                        // We store these in a hidden input to merge on submit
-                        // Prefixes: "Genre:" for main genres, "Sub:" for tags (subgenres)
-                        let autoTags = [];
+                            // 2. PREENCHE OS DADOS BÁSICOS (Síncrono e Rápido)
+                            input.value = item.name;
+                            document.getElementById('inputImage').value = item.background_image || '';
 
-                        if (item.genres && Array.isArray(item.genres)) {
-                            autoTags = autoTags.concat(item.genres.map(g => `Genre:${g.name}`));
-                        }
+                            // --- AUTO-TAGGING (GENRES & SUBGENRES) ---
+                            let autoTags = [];
 
-                        // Use top 5 tags as subgenres to avoid clutter
-                        if (item.tags && Array.isArray(item.tags)) {
-                            const meaningfulTags = item.tags
-                                .filter(t => t.language === 'eng' || !t.language) // Filter garbage
-                                .slice(0, 5)
-                                .map(t => `Sub:${t.name}`);
-                            autoTags = autoTags.concat(meaningfulTags);
-                        }
-
-                        // --- REPLACED: HLTB INTEGRATION (More Accurate than RAWG) ---
-                        // Old RAWG playtime is inaccurate (shows 1h when HLTB shows 7h)
-                        // Now we fetch from HowLongToBeat for accurate completion times
-                        const hltbData = await HLTBService.search(item.name);
-                        if (hltbData && hltbData.averageTime > 0) {
-                            autoTags.push(`Time:${hltbData.averageTime}h`);
-                            console.log(`[HLTB] ${item.name}: ${hltbData.averageTime}h (Main: ${hltbData.mainStory}h, +Extras: ${hltbData.mainExtras}h)`);
-                        } else {
-                            // Fallback to RAWG if HLTB fails (rare games might not be in HLTB)
-                            if (item.playtime && item.playtime > 0) {
-                                autoTags.push(`Time:${item.playtime}h`);
-                                console.log(`[RAWG Fallback] ${item.name}: ${item.playtime}h`);
+                            if (item.genres && Array.isArray(item.genres)) {
+                                autoTags = autoTags.concat(item.genres.map(g => `Genre:${g.name}`));
                             }
+
+                            if (item.tags && Array.isArray(item.tags)) {
+                                const meaningfulTags = item.tags
+                                    .filter(t => t.language === 'eng' || !t.language)
+                                    .slice(0, 5)
+                                    .map(t => `Sub:${t.name}`);
+                                autoTags = autoTags.concat(meaningfulTags);
+                            }
+
+                            // Helper function to save tags to hidden input
+                            const saveAutoTags = (tagsList) => {
+                                let autoTagsInput = document.getElementById('inputAutoTags');
+                                if (!autoTagsInput) {
+                                    autoTagsInput = document.createElement('input');
+                                    autoTagsInput.type = 'hidden';
+                                    autoTagsInput.id = 'inputAutoTags';
+                                    const form = document.getElementById('gameForm');
+                                    if (form) form.appendChild(autoTagsInput);
+                                }
+                                autoTagsInput.value = JSON.stringify(tagsList);
+                            };
+                            
+                            // Save initial tags immediately
+                            saveAutoTags(autoTags);
+
+                            // Metacritic score
+                            let metacriticInput = document.getElementById('inputMetacritic');
+                            if (!metacriticInput) {
+                                metacriticInput = document.createElement('input');
+                                metacriticInput.type = 'hidden';
+                                metacriticInput.id = 'inputMetacritic';
+                                const form = document.getElementById('gameForm');
+                                if (form) form.appendChild(metacriticInput);
+                            }
+                            metacriticInput.value = item.metacritic || '';
+
+                            // Platforms
+                            const platforms = (item.platforms || [])
+                                .map(p => p?.platform?.name)
+                                .filter(Boolean);
+                                
+                            const select = document.getElementById('inputPlatform');
+
+                            const mapRawgToPlatform = (rawgPlatformName) => {
+                                const name = rawgPlatformName.toLowerCase();
+                                if (name.includes('playstation 5')) return 'PlayStation 5';
+                                if (name.includes('playstation 4')) return 'PlayStation 4';
+                                if (name.includes('playstation 3')) return 'PlayStation 3';
+                                if (name.includes('playstation 2')) return 'PlayStation 2';
+                                if (name.includes('playstation vita') || name.includes('ps vita')) return 'PS Vita';
+                                if (name.includes('playstation') || name.includes('psx')) return 'PlayStation';
+                                if (name.includes('xbox series')) return 'Xbox Series X/S';
+                                if (name.includes('xbox one')) return 'Xbox One';
+                                if (name.includes('xbox 360')) return 'Xbox 360';
+                                if (name.includes('xbox')) return 'Xbox';
+                                if (name.includes('nintendo switch')) return 'Nintendo Switch';
+                                if (name.includes('wii u')) return 'Wii U';
+                                if (name.includes('wii')) return 'Wii';
+                                if (name.includes('nintendo 3ds') || name.includes('3ds')) return 'Nintendo 3DS';
+                                if (name.includes('nintendo ds') || name.includes('nds')) return 'Nintendo DS';
+                                if (name.includes('gamecube')) return 'GameCube';
+                                if (name.includes('nintendo 64') || name.includes('n64')) return 'Nintendo 64';
+                                if (name.includes('snes') || name.includes('super nintendo')) return 'Super Nintendo';
+                                if (name.includes('nes')) return 'NES';
+                                if (name.includes('game boy')) return 'Game Boy';
+                                if (name.includes('pc')) return 'PC';
+                                if (name.includes('steam')) return 'Steam Deck';
+                                if (name.includes('linux')) return 'Linux';
+                                if (name.includes('macos') || name.includes('mac')) return 'macOS';
+                                if (name.includes('ios')) return 'iOS';
+                                if (name.includes('android')) return 'Android';
+                                if (name.includes('web')) return 'Web';
+                                return rawgPlatformName;
+                            };
+
+                            const uniquePlatforms = [...new Set(platforms.map(mapRawgToPlatform))];
+
+                            if (uniquePlatforms.length > 0) {
+                                select.innerHTML = '<option value="" disabled selected>Selecione a plataforma</option>';
+                                uniquePlatforms.forEach(platform => {
+                                    const opt = document.createElement('option');
+                                    opt.value = platform;
+                                    opt.innerText = platform;
+                                    select.appendChild(opt);
+                                });
+                                select.innerHTML += '<option value="Outros">Outros</option>';
+                            }
+
+                            // 3. BACKGROUND PROCESS (Não bloqueia a UI!)
+                            // HLTB fetches completion times asynchronously
+                            HLTBService.search(item.name).then(hltbData => {
+                                if (hltbData && hltbData.averageTime > 0) {
+                                    autoTags.push(`Time:${hltbData.averageTime}h`);
+                                    console.log(`[HLTB BgSync] ${item.name}: ${hltbData.averageTime}h`);
+                                    saveAutoTags(autoTags); // Update hidden input with new time
+                                } else if (item.playtime && item.playtime > 0) {
+                                    autoTags.push(`Time:${item.playtime}h`);
+                                    console.log(`[RAWG Fallback] ${item.name}: ${item.playtime}h`);
+                                    saveAutoTags(autoTags);
+                                }
+                            }).catch(e => console.error("HLTB BgSync Error:", e));
+
+                        } catch (err) {
+                            console.error('Erro ao processar clique no jogo:', err);
+                            apiDiv.classList.add('hidden'); // Guarantee it closes even on error
                         }
-
-                        let autoTagsInput = document.getElementById('inputAutoTags');
-                        if (!autoTagsInput) {
-                            autoTagsInput = document.createElement('input');
-                            autoTagsInput.type = 'hidden';
-                            autoTagsInput.id = 'inputAutoTags';
-                            const form = document.getElementById('gameForm');
-                            if (form) form.appendChild(autoTagsInput);
-                        }
-                        autoTagsInput.value = JSON.stringify(autoTags);
-                        // -----------------------------------------------
-
-                        // Store Metacritic score in hidden field
-                        let metacriticInput = document.getElementById('inputMetacritic');
-                        if (!metacriticInput) {
-                            metacriticInput = document.createElement('input');
-                            metacriticInput.type = 'hidden';
-                            metacriticInput.id = 'inputMetacritic';
-                            const form = document.getElementById('gameForm');
-                            if (form) form.appendChild(metacriticInput);
-                        }
-                        metacriticInput.value = item.metacritic || '';
-
-                        const platforms = item.platforms?.map(p => p.platform.name) || [];
-                        const select = document.getElementById('inputPlatform');
-                        select.innerHTML = '<option value="" disabled selected>Selecione a plataforma</option>';
-
-                        // Improved platform mapping to match game's actual platforms
-                        const mapRawgToPlatform = (rawgPlatformName) => {
-                            const name = rawgPlatformName.toLowerCase();
-
-                            // PlayStation platforms
-                            if (name.includes('playstation 5')) return 'PlayStation 5';
-                            if (name.includes('playstation 4')) return 'PlayStation 4';
-                            if (name.includes('playstation 3')) return 'PlayStation 3';
-                            if (name.includes('playstation 2')) return 'PlayStation 2';
-                            if (name.includes('playstation vita') || name.includes('ps vita')) return 'PS Vita';
-                            if (name.includes('playstation') || name.includes('psx')) return 'PlayStation';
-
-                            // Xbox platforms
-                            if (name.includes('xbox series')) return 'Xbox Series X/S';
-                            if (name.includes('xbox one')) return 'Xbox One';
-                            if (name.includes('xbox 360')) return 'Xbox 360';
-                            if (name.includes('xbox')) return 'Xbox';
-
-                            // Nintendo platforms
-                            if (name.includes('nintendo switch')) return 'Nintendo Switch';
-                            if (name.includes('wii u')) return 'Wii U';
-                            if (name.includes('wii')) return 'Wii';
-                            if (name.includes('nintendo 3ds') || name.includes('3ds')) return 'Nintendo 3DS';
-                            if (name.includes('nintendo ds') || name.includes('nds')) return 'Nintendo DS';
-                            if (name.includes('gamecube')) return 'GameCube';
-                            if (name.includes('nintendo 64') || name.includes('n64')) return 'Nintendo 64';
-                            if (name.includes('snes') || name.includes('super nintendo')) return 'Super Nintendo';
-                            if (name.includes('nes')) return 'NES';
-                            if (name.includes('game boy')) return 'Game Boy';
-
-                            // PC and others
-                            if (name.includes('pc')) return 'PC';
-                            if (name.includes('steam')) return 'Steam Deck';
-                            if (name.includes('linux')) return 'Linux';
-                            if (name.includes('macos') || name.includes('mac')) return 'macOS';
-                            if (name.includes('ios')) return 'iOS';
-                            if (name.includes('android')) return 'Android';
-                            if (name.includes('web')) return 'Web';
-
-                            // Return original if no match
-                            return rawgPlatformName;
-                        };
-
-                        const uniquePlatforms = [...new Set(platforms.map(mapRawgToPlatform))];
-
-                        // Only add platforms that exist for this game from RAWG
-                        uniquePlatforms.forEach(platform => {
-                            const opt = document.createElement('option');
-                            opt.value = platform;
-                            opt.innerText = platform;
-                            select.appendChild(opt);
-                        });
-
-                        apiDiv.classList.add('hidden'); // Hide results after selection
                     };
 
                     apiDiv.appendChild(div);

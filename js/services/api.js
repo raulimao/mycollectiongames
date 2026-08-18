@@ -375,7 +375,7 @@ const GameService = {
         if (cached) return cached;
 
         try {
-            const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=5`;
+            const url = `https://api.rawg.io/api/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(query)}&page_size=10&search_exact=false`;
             Diagnostics.logNetwork(true, 'GET', url);
             const res = await fetch(url);
             if (!res.ok) {
